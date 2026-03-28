@@ -5,6 +5,8 @@ import { existsSync } from 'node:fs'
 import { writeFile, stat } from 'node:fs/promises'
 import express, { type Express } from 'express'
 import { createCodexBridgeMiddleware } from './codexAppServerBridge.js'
+import { createAcpBridgeMiddleware, type AcpBridgeMiddleware } from './acpBridge.js'
+import type { AcpAgentId } from '../commandResolution.js'
 import { createAuthSession } from './authMiddleware.js'
 import { createDirectoryListingHtml, createTextEditorHtml, decodeBrowsePath, isTextEditableFile, normalizeLocalPath } from './localBrowseUi.js'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -68,9 +70,20 @@ function readWildcardPathParam(value: unknown): string {
   return ''
 }
 
+function getConfiguredAgentId(): AcpAgentId | null {
+  const envAgent = process.env.CODEXUI_AGENT?.trim().toLowerCase()
+  if (envAgent && envAgent !== 'codex') return envAgent as AcpAgentId
+  return null
+}
+
+type BridgeMiddleware = ReturnType<typeof createCodexBridgeMiddleware> | AcpBridgeMiddleware
+
 export function createServer(options: ServerOptions = {}): ServerInstance {
   const app = express()
-  const bridge = createCodexBridgeMiddleware()
+  const agentId = getConfiguredAgentId()
+  const bridge: BridgeMiddleware = agentId
+    ? createAcpBridgeMiddleware(agentId)
+    : createCodexBridgeMiddleware()
   const authSession = options.password ? createAuthSession(options.password) : null
 
   // 1. Auth middleware (if password is set)

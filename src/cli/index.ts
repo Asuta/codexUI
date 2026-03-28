@@ -16,6 +16,8 @@ import {
   getUserNpmPrefix,
   prependPathEntry,
   resolveCodexCommand,
+  resolveAcpAgentCommand,
+  type AcpAgentId,
 } from '../commandResolution.js'
 import { createServer as createApp } from '../server/httpServer.js'
 import { generatePassword } from '../server/password.js'
@@ -438,7 +440,13 @@ async function addProjectOnly(projectPath: string): Promise<void> {
   await persistLaunchProject(trimmed)
 }
 
-async function startServer(options: { port: string; password: string | boolean; tunnel: boolean; open: boolean; projectPath?: string }) {
+function resolveAgentId(): AcpAgentId | null {
+  const envAgent = process.env.CODEXUI_AGENT?.trim().toLowerCase()
+  if (envAgent && envAgent !== 'codex') return envAgent as AcpAgentId
+  return null
+}
+
+async function startServer(options: { port: string; password: string | boolean; tunnel: boolean; open: boolean; projectPath?: string; agent?: string }) {
   const version = await readCliVersion()
   const projectPath = options.projectPath?.trim() ?? ''
   if (projectPath.length > 0) {
@@ -449,13 +457,33 @@ async function startServer(options: { port: string; password: string | boolean; 
       console.warn(`\n[project] Could not open launch project: ${message}\n`)
     }
   }
-  const codexCommand = ensureCodexInstalled() ?? resolveCodexCommand()
-  if (codexCommand) {
-    process.env.CODEXUI_CODEX_COMMAND = codexCommand
+
+  const agentFromFlag = options.agent?.trim().toLowerCase()
+  const agentId = agentFromFlag && agentFromFlag !== 'codex'
+    ? agentFromFlag as AcpAgentId
+    : resolveAgentId()
+
+  if (agentId) {
+    process.env.CODEXUI_AGENT = agentId
+    const agentCommand = resolveAcpAgentCommand(agentId)
+    if (!agentCommand) {
+      console.warn(`\n[agent] ACP agent "${agentId}" command not found. Ensure it is installed.\n`)
+    } else {
+      console.log(`\n[agent] Using ACP agent: ${agentId} (${agentCommand.command} ${agentCommand.args.join(' ')})\n`)
+    }
   }
-  if (!hasCodexAuth() && codexCommand) {
-    console.log('\nCodex is not logged in. Starting `codex login`...\n')
-    runOrFail(codexCommand, ['login'], 'Codex login')
+
+  const skipCodexSetup = Boolean(agentId)
+  let codexCommand: string | null = null
+  if (!skipCodexSetup) {
+    codexCommand = ensureCodexInstalled() ?? resolveCodexCommand()
+    if (codexCommand) {
+      process.env.CODEXUI_CODEX_COMMAND = codexCommand
+    }
+    if (!hasCodexAuth() && codexCommand) {
+      console.log('\nCodex is not logged in. Starting `codex login`...\n')
+      runOrFail(codexCommand, ['login'], 'Codex login')
+    }
   }
   const requestedPort = parseInt(options.port, 10)
   const password = resolvePassword(options.password)
@@ -554,10 +582,11 @@ program
   .option('--tunnel', 'start cloudflared tunnel', true)
   .option('--no-tunnel', 'disable cloudflared tunnel startup')
   .option('--open', 'open browser on startup', true)
+  .option('--agent <name>', 'ACP agent to use instead of Codex (gemini, claude, or custom command)')
   .option('--no-open', 'do not open browser on startup')
   .action(async (
     projectPath: string | undefined,
-    opts: { port: string; password: string | boolean; tunnel: boolean; open: boolean; openProject?: string },
+    opts: { port: string; password: string | boolean; tunnel: boolean; open: boolean; openProject?: string; agent?: string },
   ) => {
     const rawArgv = process.argv.slice(2)
     const openProjectFlagIndex = rawArgv.findIndex((arg) => arg === '--open-project' || arg.startsWith('--open-project='))

@@ -170,6 +170,40 @@ export function resolvePythonCommand(): CommandInvocation | null {
   return null
 }
 
+export type AcpAgentId = 'gemini' | 'claude' | 'codex' | string
+
+export function resolveAcpAgentCommand(agentId: AcpAgentId): { command: string; args: string[] } | null {
+  const explicit = process.env.CODEXUI_AGENT_COMMAND?.trim()
+  if (explicit) {
+    const parts = explicit.split(/\s+/)
+    return { command: parts[0], args: parts.slice(1) }
+  }
+
+  switch (agentId) {
+    case 'gemini': {
+      if (isRunnableCommand('gemini', ['--version'])) {
+        return { command: 'gemini', args: ['--acp'] }
+      }
+      return null
+    }
+    case 'claude': {
+      return {
+        command: 'npx',
+        args: ['-y', '@anthropic-ai/claude-code', '--acp'],
+      }
+    }
+    case 'codex':
+      return null
+    default: {
+      const parts = agentId.split(/\s+/)
+      if (parts.length > 0 && parts[0]) {
+        return { command: parts[0], args: parts.slice(1) }
+      }
+      return null
+    }
+  }
+}
+
 export function resolveSkillInstallerScriptPath(codexHome?: string): string | null {
   const normalizedCodexHome = codexHome?.trim()
   const candidates = uniqueStrings([

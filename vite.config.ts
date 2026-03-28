@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { createCodexBridgeMiddleware } from "./src/server/codexAppServerBridge";
+import { createAcpBridgeMiddleware } from "./src/server/acpBridge";
 import { createDirectoryListingHtml, createTextEditorHtml, decodeBrowsePath, isTextEditableFile, normalizeLocalPath } from "./src/server/localBrowseUi";
 import tailwindcss from "@tailwindcss/vite";
 import { spawnSync } from "node:child_process";
@@ -104,7 +105,10 @@ export default defineConfig({
     {
       name: "codex-bridge",
       configureServer(server) {
-        const bridge = createCodexBridgeMiddleware();
+        const acpAgent = process.env.CODEXUI_AGENT?.trim().toLowerCase();
+        const bridge = acpAgent && acpAgent !== "codex"
+          ? createAcpBridgeMiddleware(acpAgent)
+          : createCodexBridgeMiddleware();
         const httpServer = server.httpServer;
         if (httpServer) {
           const hostScope = httpServer as typeof httpServer & {
