@@ -1414,7 +1414,9 @@ function normalizePathDots(pathValue: string): string {
 }
 
 function resolveRelativePath(pathValue: string, cwd: string): string {
-  const normalizedPath = normalizePathSeparators(normalizeFileUrlToPath(pathValue.trim()))
+  const normalizedPath = normalizePathSeparators(
+    decodePathLikeValue(normalizeFileUrlToPath(pathValue.trim())),
+  )
   if (!normalizedPath) return ''
 
   const looksLikeAbsolute = normalizedPath.startsWith('/') || /^[A-Za-z]:\//u.test(normalizedPath)
@@ -2528,7 +2530,7 @@ function toRenderableImageUrl(value: string): string {
 }
 
 function toBrowseUrl(pathValue: string): string {
-  const normalized = pathValue.trim()
+  const normalized = decodePathLikeValue(pathValue.trim())
   if (!normalized) return '#'
   const looksLikeAbsolutePath = (candidate: string): boolean => (
     candidate.startsWith('/') || /^[A-Za-z]:[\\/]/u.test(candidate)
