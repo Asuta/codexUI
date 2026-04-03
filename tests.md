@@ -768,7 +768,7 @@ This file tracks manual regression and feature verification steps.
 #### Rollback/Cleanup
 - None.
 
-### Feature: Rollback button reveals on tap for touch/mobile conversation rows
+### Feature: Rollback button remains visible on touch/mobile conversation rows
 
 #### Prerequisites
 - App server is running from this repository.
@@ -777,18 +777,15 @@ This file tracks manual regression and feature verification steps.
 
 #### Steps
 1. Open the thread conversation on a touch viewport where hover is not available.
-2. Locate an assistant response row and confirm the action toolbar is initially hidden.
-3. Tap a non-interactive area of that message row once.
-4. Verify the action toolbar appears and includes the `Rollback` action.
-5. Tap the same row again and verify the toolbar hides again.
-6. Tap `Rollback` while the toolbar is visible and confirm the action triggers the existing rollback flow.
-7. On desktop, hover the same row and verify the toolbar appears on hover.
-8. Navigate message actions using keyboard focus (`Tab`) and verify focused rows also reveal the toolbar.
+2. Locate an assistant response row and inspect the action toolbar under the message.
+3. Verify the `Rollback` action is visible without needing hover or tap.
+4. Tap `Rollback` and confirm the action triggers the existing rollback flow.
+5. On desktop, hover the same row and verify the toolbar appears on hover.
+6. Navigate message actions using keyboard focus (`Tab`) and verify focused rows also reveal the toolbar.
 
 #### Expected Results
-- On touch/mobile viewports, the message action toolbar is hidden by default and appears only after tapping the row.
-- A second tap on the same row hides the toolbar again.
-- The `Rollback` button is visible and actionable once the toolbar is revealed.
+- On touch/mobile viewports, the message action toolbar is visible by default.
+- The `Rollback` button is visible and actionable on assistant response rows.
 - Desktop hover and keyboard focus continue to reveal the toolbar.
 
 #### Rollback/Cleanup

@@ -183,13 +183,7 @@
           </div>
         </div>
 
-        <div
-          v-else
-          class="message-row"
-          :data-role="message.role"
-          :data-message-type="message.messageType || ''"
-          @click="onConversationRowClick(message, $event)"
-        >
+        <div v-else class="message-row" :data-role="message.role" :data-message-type="message.messageType || ''">
           <div class="message-stack" :data-role="message.role">
             <article class="message-body" :data-role="message.role">
               <ul
@@ -588,7 +582,6 @@
               <div
                 v-if="showCopyResponseButton(message) || showRollbackButton(message)"
                 class="message-toolbar"
-                :class="{ 'message-toolbar-visible': isMessageToolbarVisible(message.id) }"
                 :data-role="message.role"
               >
                 <button
@@ -1234,7 +1227,6 @@ const conversationListRef = ref<HTMLElement | null>(null)
 const bottomAnchorRef = ref<HTMLElement | null>(null)
 const modalImageUrl = ref('')
 const copiedResponseAnchorId = ref('')
-const tappedToolbarMessageId = ref('')
 const toolQuestionAnswers = ref<Record<string, string>>({})
 const toolQuestionOtherAnswers = ref<Record<string, string>>({})
 const localScrollState = ref<ThreadScrollState | null>(null)
@@ -2186,27 +2178,6 @@ const rollbackTurnIdByAnchorId = computed<Record<string, string>>(() => {
 
 function showRollbackButton(message: UiMessage): boolean {
   return typeof rollbackTurnIdByAnchorId.value[message.id] === 'string'
-}
-
-function isInteractiveClickTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element)) return false
-  return Boolean(target.closest('button, a, input, textarea, select, summary, [role="button"]'))
-}
-
-function isTouchToolbarMode(): boolean {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
-  return window.matchMedia('(hover: none)').matches
-}
-
-function isMessageToolbarVisible(anchorMessageId: string): boolean {
-  return tappedToolbarMessageId.value === anchorMessageId
-}
-
-function onConversationRowClick(message: UiMessage, event: MouseEvent): void {
-  if (!isTouchToolbarMode()) return
-  if (isInteractiveClickTarget(event.target)) return
-  if (!showCopyResponseButton(message) && !showRollbackButton(message)) return
-  tappedToolbarMessageId.value = tappedToolbarMessageId.value === message.id ? '' : message.id
 }
 
 function rollbackResponse(anchorMessageId: string): void {
@@ -3754,19 +3725,8 @@ watch(
     localScrollState.value = null
     autoFollowOutput.value = props.scrollState?.isAtBottom !== false
     modalImageUrl.value = ''
-    tappedToolbarMessageId.value = ''
   },
   { flush: 'post' },
-)
-
-watch(
-  () => props.messages.map((message) => message.id),
-  (messageIds) => {
-    if (!tappedToolbarMessageId.value) return
-    if (!messageIds.includes(tappedToolbarMessageId.value)) {
-      tappedToolbarMessageId.value = ''
-    }
-  },
 )
 
 watch(
@@ -3985,13 +3945,9 @@ onBeforeUnmount(() => {
   @apply opacity-100;
 }
 
-.message-toolbar-visible {
-  @apply opacity-100;
-}
-
 @media (hover: none) {
   .message-toolbar {
-    @apply opacity-[0.01];
+    @apply opacity-100;
   }
 }
 
