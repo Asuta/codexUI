@@ -43,7 +43,7 @@
             </button>
           </li>
           <li v-if="filteredOptions.length === 0" class="composer-dropdown-empty">
-            No matching projects
+            {{ emptyText }}
           </li>
         </ul>
 
@@ -100,6 +100,7 @@ const props = defineProps<{
   addActionMode?: 'inline' | 'event'
   defaultAddValue?: string
   addPlaceholder?: string
+  emptyLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -129,6 +130,7 @@ const searchPlaceholderText = computed(() => props.searchPlaceholder?.trim() || 
 const addActionLabelText = computed(() => props.addActionLabel?.trim() || 'Add new project')
 const addActionMode = computed(() => props.addActionMode ?? 'inline')
 const addPlaceholderText = computed(() => props.addPlaceholder?.trim() || 'Project name or absolute path')
+const emptyText = computed(() => props.emptyLabel?.trim() || 'No results')
 const filteredOptions = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
   if (!query) return props.options
