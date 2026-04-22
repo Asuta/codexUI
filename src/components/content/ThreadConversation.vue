@@ -24,8 +24,10 @@
       <li
         v-if="!hiddenGroupedCommandIds.has(message.id) && !hiddenFileChangeMessageIds.has(message.id)"
         class="conversation-item"
+        :class="{ 'conversation-item-find-active': message.id === highlightMessageId }"
         :data-role="message.role"
         :data-message-type="message.messageType || ''"
+        :data-message-id="message.id"
       >
         <div v-if="isCommandMessage(message)" class="message-row" data-role="system">
           <div class="message-stack" data-role="system">
@@ -1177,6 +1179,8 @@ const props = defineProps<{
   activeThreadId: string
   cwd: string
   scrollState: ThreadScrollState | null
+  findQuery?: string
+  highlightMessageId?: string
 }>()
 
 const emit = defineEmits<{
@@ -3968,6 +3972,25 @@ watch(
 )
 
 watch(
+  () => props.highlightMessageId,
+  async (nextId) => {
+    const messageId = nextId?.trim()
+    if (!messageId) return
+    const messageIndex = props.messages.findIndex((message) => message.id === messageId)
+    if (messageIndex >= 0 && messageIndex < renderWindowStart.value) {
+      // Ensure search navigation can target older messages that are currently windowed out.
+      renderWindowStart.value = Math.max(0, messageIndex - 6)
+    }
+    await nextTick()
+    const container = conversationListRef.value
+    if (!container) return
+    const target = container.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(messageId)}"]`)
+    if (!target) return
+    target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  },
+)
+
+watch(
   activeCommandMessageId,
   (nextId, prevId) => {
     if (!prevId || prevId === nextId) return
@@ -4108,6 +4131,11 @@ onBeforeUnmount(() => {
 
 .conversation-item {
   @apply m-0 w-full min-w-0 flex;
+}
+
+.conversation-item-find-active .message-card,
+.conversation-item-find-active .message-body {
+  @apply ring-2 ring-amber-400 ring-offset-2 ring-offset-white rounded-xl;
 }
 
 .conversation-item-request {
