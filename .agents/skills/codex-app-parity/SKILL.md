@@ -671,3 +671,10 @@ After each feature implementation session that uses this skill:
   - `bearerToken` -> bearer token
   - `notLoggedIn` -> login required + authenticate action
   - `unsupported` -> auth unsupported
+
+## Findings: Chat Stream Rendering Performance (2026-04-22)
+
+- Codex.app `26.417.41555` renderer derives chat content into renderable turn entries such as `visibleTurnEntries` before rendering, rather than parsing every message directly in JSX on each stream tick.
+- Stream deltas update only the active item text (`item/agentMessage/delta`, `item/plan/delta`, reasoning deltas), while unchanged turn/item render output is protected by React memo-cache patterns.
+- Code highlighting is lazy-loaded through a Shiki highlight provider, with the provider imported separately from the main renderer bundle.
+- Parity implication for this Vue repo: keep chat rows derived and cacheable, memoize unchanged markdown/text-flow rows during streaming, and invalidate code-highlight HTML only when the highlighter becomes available or the code/language changes.
