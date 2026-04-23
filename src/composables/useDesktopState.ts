@@ -3883,8 +3883,33 @@ export function useDesktopState() {
     await refreshSkillsPromise
   }
 
-  async function refreshCodexRateLimits(): Promise<void> {
-    await refreshRateLimits()
+  async function refreshAncillaryState(
+    options: { providerChanged?: boolean; includeProviderModels?: boolean } = {},
+  ): Promise<void> {
+    await Promise.allSettled([
+      refreshModelPreferences({
+        providerChanged: options.providerChanged,
+        includeProviderModels: options.includeProviderModels,
+      }),
+      refreshRateLimits(),
+      refreshCollaborationModes(),
+      refreshSkills(),
+    ])
+  }
+
+  function scheduleAncillaryStateRefresh(
+    options: { providerChanged?: boolean; includeProviderModels?: boolean } = {},
+  ): void {
+    const run = () => {
+      void refreshAncillaryState(options)
+    }
+
+    if (typeof window === 'undefined') {
+      run()
+      return
+    }
+
+    window.setTimeout(run, 0)
   }
 
   async function refreshAll(
@@ -3896,23 +3921,19 @@ export function useDesktopState() {
 
     try {
       await loadThreads()
-      const ancillaryRefresh = Promise.allSettled([
-        refreshModelPreferences({
-          providerChanged: options.providerChanged,
-          includeProviderModels: options.providerChanged === true || awaitAncillaryRefreshes,
-        }),
-        refreshRateLimits(),
-        refreshCollaborationModes(),
-        refreshSkills(),
-        refreshCodexRateLimits(),
-      ]).then(() => undefined)
       if (includeSelectedThreadMessages) {
         await loadMessages(selectedThreadId.value)
       }
       if (awaitAncillaryRefreshes) {
-        await ancillaryRefresh
+        await refreshAncillaryState({
+          providerChanged: options.providerChanged,
+          includeProviderModels: options.providerChanged === true || awaitAncillaryRefreshes,
+        })
       } else {
-        void ancillaryRefresh
+        scheduleAncillaryStateRefresh({
+          providerChanged: options.providerChanged,
+          includeProviderModels: false,
+        })
       }
     } catch (unknownError) {
       error.value = unknownError instanceof Error ? unknownError.message : 'Unknown application error'
@@ -3923,10 +3944,8 @@ export function useDesktopState() {
     setSelectedThreadId(threadId)
 
     try {
-      await Promise.all([
-        loadMessages(threadId),
-        refreshSkills(),
-      ])
+      await loadMessages(threadId)
+      void refreshSkills()
     } catch (unknownError) {
       error.value = unknownError instanceof Error ? unknownError.message : 'Unknown application error'
     }
