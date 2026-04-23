@@ -57,3 +57,52 @@
 - Terminal behavior matches Codex.app-style integrated terminal basics: per-thread terminal, project-scoped cwd, header toggle, keyboard shortcut, recent output buffer, and readable snapshot endpoint.
 - Quick-command menu submits common project commands to the active terminal without replacing the session.
 - Custom quick commands are added via the `Run...` menu prompt and sorted by most-used/recent history.
+
+## Realtime Chat Rendering And Sync Performance
+
+### Prerequisites
+- Run the dev server at `http://127.0.0.1:4173`.
+- Ensure the TestChat project exists at `/Users/igor/temp/TestChat`.
+- Install dependencies with `pnpm install`.
+- Optional but useful: open browser devtools Network panel filtered to `/codex-api/rpc`.
+
+### Realtime Profiler
+1. Run `TESTCHAT_PROFILE_LABEL=manual node scripts/profile-testchat-realtime.cjs`.
+2. Wait for the TestChat turn to finish creating the temporary todo app.
+3. Confirm the script prints `cleanupOk: true`.
+4. Confirm no `/Users/igor/temp/TestChat/todo-render-profile-*` directory remains.
+5. Open the generated JSON report under `output/playwright/testchat-realtime-manual-*.json`.
+6. Confirm the report includes `longTaskSummary`, `frameDeltaSummary`, `over50msFrameCount`, screenshot path, and trace path.
+7. Open the generated trace with `npx playwright show-trace output/playwright/testchat-realtime-manual-*-trace.zip`.
+
+### Rendering Behavior
+1. In TestChat, send a message that produces mixed markdown while streaming.
+2. Watch the active assistant row during streaming.
+3. Confirm older visible messages do not visibly flicker or reflow while new text streams.
+4. Confirm code blocks still render escaped/plain before highlighter load and highlighted after highlighter load.
+5. Confirm markdown images still render, and failed image loads fall back to the original markdown text.
+
+### File-Link Regression
+1. Ensure `/Users/igor/temp/TestChat/qwe.txt` exists.
+2. Send:
+   `FILE_LINK_RENDER_CACHE_MANUAL [qwe.txt](/Users/igor/temp/TestChat/qwe.txt) with **bold** and \`code\``
+3. Inspect the rendered row.
+4. Confirm there is one `a.message-file-link`.
+5. Confirm the link href contains `/codex-local-browse/Users/igor/temp/TestChat/qwe.txt`.
+6. Confirm the link title is `/Users/igor/temp/TestChat/qwe.txt`.
+7. Confirm visible link text is `qwe.txt`.
+8. Confirm bold text and inline code render in the same row.
+
+### Sync Churn
+1. Start a TestChat turn that streams assistant text and performs file changes.
+2. Watch `/codex-api/rpc` requests during the active turn.
+3. Confirm high-frequency `item/*` streaming events do not trigger repeated `thread/list` reloads.
+4. Confirm live assistant text, command output, and file-change updates still appear while the turn is running.
+5. Confirm reconciliation still happens around structural events such as turn start/completion.
+6. If the sidebar has more than one page of threads, confirm background pagination waits while a turn is active and resumes after all active turns complete.
+
+### Expected Result
+- Streaming remains smooth, with unchanged chat rows avoiding repeated markdown parse/highlight work.
+- The profiler completes with cleanup enabled and no persistent temporary todo app directory.
+- Markdown file links, bold text, inline code, code blocks, and markdown image fallback behavior still work.
+- Thread list/message refreshes are bounded during streaming instead of firing for every realtime item event.
