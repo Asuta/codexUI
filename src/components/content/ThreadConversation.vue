@@ -297,6 +297,15 @@
                     </li>
                   </ol>
                   <div v-else class="plan-card-markdown" v-html="renderMarkdownBlocksAsHtml(message.text)" />
+                  <div v-if="showImplementPlanButton(message)" class="plan-card-actions">
+                    <button
+                      type="button"
+                      class="plan-card-implement-button"
+                      @click="implementPlan(message)"
+                    >
+                      Implement plan
+                    </button>
+                  </div>
                 </div>
                 <div
                   v-else
@@ -925,6 +934,37 @@ function isPlanMessage(message: UiMessage): boolean {
   return message.messageType === 'plan' || message.messageType === 'plan.live'
 }
 
+function buildPlanMessageText(explanation: string, steps: UiPlanStep[]): string {
+  const lines: string[] = []
+  if (explanation.trim()) {
+    lines.push(explanation.trim())
+  }
+  for (const step of steps) {
+    const marker = step.status === 'completed' ? 'x' : step.status === 'inProgress' ? '~' : ' '
+    lines.push(`- [${marker}] ${step.step}`)
+  }
+  return lines.join('\n').trim()
+}
+
+function showImplementPlanButton(message: UiMessage): boolean {
+  return isPlanMessage(message)
+    && message.messageType !== 'plan.live'
+    && message.role === 'assistant'
+    && Boolean(message.turnId)
+    && readPlanSteps(message).length > 0
+}
+
+function implementPlan(message: UiMessage): void {
+  const turnId = message.turnId?.trim() ?? ''
+  if (!turnId) return
+  const planText = buildPlanMessageText(readPlanExplanation(message), readPlanSteps(message))
+  if (!planText) return
+  emit('implementPlan', {
+    turnId,
+    text: `Implement this plan:\n\n${planText}`,
+  })
+}
+
 function isFileChangeMessage(message: UiMessage): boolean {
   return message.messageType === 'fileChange'
     && message.fileChangeStatus === 'completed'
@@ -1194,6 +1234,7 @@ const emit = defineEmits<{
   updateScrollState: [payload: { threadId: string; state: ThreadScrollState }]
   forkThread: [payload: { threadId: string; turnIndex: number }]
   rollback: [payload: { turnId: string }]
+  implementPlan: [payload: { turnId: string; text: string }]
   respondServerRequest: [payload: { id: number; result?: unknown; error?: { code?: number; message: string } }]
 }>()
 
@@ -4632,6 +4673,14 @@ onBeforeUnmount(() => {
 
 .plan-step-text {
   @apply min-w-0 flex-1;
+}
+
+.plan-card-actions {
+  @apply mt-3 flex justify-end;
+}
+
+.plan-card-implement-button {
+  @apply inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 transition hover:border-slate-400 hover:bg-slate-50;
 }
 
 .message-text {

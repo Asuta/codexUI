@@ -772,6 +772,7 @@
                     @update-scroll-state="onUpdateThreadScrollState"
                     @fork-thread="onForkThreadFromMessage"
                     @rollback="onRollback"
+                    @implement-plan="onImplementPlan"
                     @respond-server-request="onRespondServerRequest" />
                 </div>
 
@@ -2786,6 +2787,15 @@ function onRollback(payload: { turnId: string }): void {
     }
   }
   void rollbackSelectedThread(payload.turnId)
+}
+
+function onImplementPlan(payload: { turnId: string; text: string }): void {
+  if (isHomeRoute.value || !selectedThreadId.value) return
+  const text = payload.text.trim()
+  if (!text) return
+  setSelectedCollaborationMode('default')
+  scheduleMobileConversationJumpToLatest()
+  void sendMessageToSelectedThread(text, [], [], 'steer', [])
 }
 
 
