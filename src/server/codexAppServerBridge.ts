@@ -2316,6 +2316,7 @@ async function listAgentInstructionFiles(cwd: string): Promise<Array<{
   path: string
   content: string
   isDefault: boolean
+  scope: 'project' | 'global'
 }>> {
   const normalizedCwd = isAbsolute(cwd) ? cwd : resolve(cwd)
   const info = await stat(normalizedCwd)
@@ -2323,42 +2324,71 @@ async function listAgentInstructionFiles(cwd: string): Promise<Array<{
     throw new Error('cwd is not a directory')
   }
 
-  const entries = await readdir(normalizedCwd, { withFileTypes: true })
-  const customFiles = entries
+  const projectEntries = await readdir(normalizedCwd, { withFileTypes: true })
+  const projectCustomFiles = projectEntries
     .filter((entry) => entry.isFile() && /^AGENTS(?:\.[^.]+)+\.md$/u.test(entry.name))
     .map((entry) => entry.name)
     .sort((a, b) => a.localeCompare(b))
-  const files = ['AGENTS.md', ...customFiles]
   const rows: Array<{
     value: string
     label: string
     path: string
     content: string
     isDefault: boolean
+    scope: 'project' | 'global'
   }> = []
 
-  for (const fileName of files) {
+  for (const fileName of ['AGENTS.md', ...projectCustomFiles]) {
     const filePath = join(normalizedCwd, fileName)
     try {
       const content = await readFile(filePath, 'utf8')
       rows.push({
-        value: fileName,
-        label: fileName === 'AGENTS.md' ? 'Default AGENTS.md' : fileName,
+        value: `project:${fileName}`,
+        label: fileName === 'AGENTS.md' ? 'Default AGENTS.md' : `Project: ${fileName}`,
         path: filePath,
         content,
         isDefault: fileName === 'AGENTS.md',
+        scope: 'project',
       })
     } catch {
       if (fileName === 'AGENTS.md') {
         rows.push({
-          value: fileName,
+          value: 'project:AGENTS.md',
           label: 'Default AGENTS.md',
           path: filePath,
           content: '',
           isDefault: true,
+          scope: 'project',
         })
       }
     }
+  }
+
+  const codexHome = getCodexHomeDir()
+  try {
+    const globalEntries = await readdir(codexHome, { withFileTypes: true })
+    const globalCustomFiles = globalEntries
+      .filter((entry) => entry.isFile() && /^AGENTS(?:\.[^.]+)+\.md$/u.test(entry.name))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b))
+    for (const fileName of globalCustomFiles) {
+      const filePath = join(codexHome, fileName)
+      try {
+        const content = await readFile(filePath, 'utf8')
+        rows.push({
+          value: `global:${fileName}`,
+          label: `Global: ${fileName}`,
+          path: filePath,
+          content,
+          isDefault: false,
+          scope: 'global',
+        })
+      } catch {
+        // Ignore unreadable global personality files so one bad file does not hide project options.
+      }
+    }
+  } catch {
+    // A missing CODEX_HOME should not prevent project-level AGENTS selection.
   }
 
   return rows

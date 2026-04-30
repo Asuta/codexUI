@@ -1146,7 +1146,7 @@ const newWorktreeBaseBranch = ref('')
 const worktreeBranchOptions = ref<WorktreeBranchOption[]>([])
 const isLoadingWorktreeBranches = ref(false)
 const newThreadAgentOptions = ref<AgentInstructionsOption[]>([])
-const selectedNewThreadAgentFile = ref('AGENTS.md')
+const selectedNewThreadAgentFile = ref('project:AGENTS.md')
 const isLoadingNewThreadAgents = ref(false)
 const workspaceRootOptionsState = ref<{ order: string[]; labels: Record<string, string> }>({ order: [], labels: {} })
 const worktreeInitStatus = ref<{ phase: 'idle' | 'running' | 'error'; title: string; message: string }>({
@@ -2364,7 +2364,7 @@ function onSelectNewThreadFolder(cwd: string): void {
 }
 
 function onSelectNewThreadAgentFile(value: string): void {
-  selectedNewThreadAgentFile.value = value.trim() || 'AGENTS.md'
+  selectedNewThreadAgentFile.value = value.trim() || 'project:AGENTS.md'
 }
 
 function onSelectNewWorktreeBranch(branch: string): void {
@@ -3364,7 +3364,7 @@ watch(
 
 async function loadNewThreadAgentOptions(): Promise<void> {
   const cwd = newThreadCwd.value.trim()
-  selectedNewThreadAgentFile.value = 'AGENTS.md'
+  selectedNewThreadAgentFile.value = 'project:AGENTS.md'
   newThreadAgentOptions.value = []
   if (!cwd) return
 
@@ -3373,11 +3373,11 @@ async function loadNewThreadAgentOptions(): Promise<void> {
     const options = await getAgentInstructionsOptions(cwd)
     newThreadAgentOptions.value = options
     if (!options.some((option) => option.value === selectedNewThreadAgentFile.value)) {
-      selectedNewThreadAgentFile.value = options[0]?.value ?? 'AGENTS.md'
+      selectedNewThreadAgentFile.value = options[0]?.value ?? 'project:AGENTS.md'
     }
   } catch {
     newThreadAgentOptions.value = []
-    selectedNewThreadAgentFile.value = 'AGENTS.md'
+    selectedNewThreadAgentFile.value = 'project:AGENTS.md'
   } finally {
     isLoadingNewThreadAgents.value = false
   }

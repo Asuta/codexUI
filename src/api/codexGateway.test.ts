@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { startThread, startThreadTurn } from './codexGateway'
+import { getAgentInstructionsOptions, startThread, startThreadTurn } from './codexGateway'
 
 function mockRpcFetch(): { requests: Array<{ method: string, params: Record<string, unknown>, url: string }> } {
   const requests: Array<{ method: string, params: Record<string, unknown>, url: string }> = []
@@ -58,6 +58,61 @@ describe('startThread instruction payloads', () => {
       baseInstructions: 'CUSTOM_AGENT_ONLY',
     })
     expect(JSON.stringify(requests[0])).not.toContain('ORIGINAL_AGENTS_MARKER')
+  })
+})
+
+describe('getAgentInstructionsOptions', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('preserves project and global instruction scopes', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      data: [
+        {
+          value: 'project:AGENTS.md',
+          label: 'Default AGENTS.md',
+          path: '/tmp/TestChat/AGENTS.md',
+          content: 'ORIGINAL_AGENTS_MARKER',
+          isDefault: true,
+          scope: 'project',
+        },
+        {
+          value: 'global:AGENTS.review.md',
+          label: 'Global: AGENTS.review.md',
+          path: '/Users/igor/.codex/AGENTS.review.md',
+          content: 'GLOBAL_REVIEW_MARKER',
+          isDefault: false,
+          scope: 'global',
+        },
+      ],
+    }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })))
+
+    const options = await getAgentInstructionsOptions('/tmp/TestChat')
+
+    expect(options).toEqual([
+      {
+        value: 'project:AGENTS.md',
+        label: 'Default AGENTS.md',
+        path: '/tmp/TestChat/AGENTS.md',
+        content: 'ORIGINAL_AGENTS_MARKER',
+        isDefault: true,
+        scope: 'project',
+      },
+      {
+        value: 'global:AGENTS.review.md',
+        label: 'Global: AGENTS.review.md',
+        path: '/Users/igor/.codex/AGENTS.review.md',
+        content: 'GLOBAL_REVIEW_MARKER',
+        isDefault: false,
+        scope: 'global',
+      },
+    ])
   })
 })
 

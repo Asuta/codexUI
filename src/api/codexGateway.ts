@@ -290,6 +290,7 @@ export type AgentInstructionsOption = {
   path: string
   content: string
   isDefault: boolean
+  scope: 'project' | 'global'
 }
 
 const DEFAULT_COLLABORATION_MODE_OPTIONS: CollaborationModeOption[] = [
@@ -2654,6 +2655,7 @@ export async function getAgentInstructionsOptions(cwd: string): Promise<AgentIns
       path,
       content,
       isDefault: row.isDefault === true,
+      scope: row.scope === 'global' ? 'global' : 'project',
     }]
   })
 }
