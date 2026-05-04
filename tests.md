@@ -227,7 +227,7 @@ This file tracks manual regression and feature verification steps.
 ### Browser Use plugin runtime command
 
 #### Feature/Change Name
-codexui exposes Browser Use in chats by using the bundled Codex.app runtime, registering `node_repl`, starting a session-scoped local Browser Use backend, and applying the vendored `Mattwmaster58/playwright_stealth` init payload to new Browser Use contexts.
+codexui exposes Browser Use in chats by using the bundled Codex.app runtime, registering `node_repl`, and starting a session-scoped local Browser Use backend.
 
 #### Prerequisites/Setup
 1. macOS with `/Applications/Codex.app/Contents/Resources/codex` installed.
@@ -242,17 +242,13 @@ codexui exposes Browser Use in chats by using the bundled Codex.app runtime, reg
 4. Open `http://127.0.0.1:4173` in light theme.
 5. Create or open a codexui chat and ask it to use Browser Use to open `https://example.com` and report the page title.
 6. Confirm the chat produces `mcp__node_repl__js` Browser Use activity and returns `{"title":"Example Domain","url":"https://example.com/"}` without a missing-tool or IAB discovery error.
-7. In the same Browser Use-enabled chat, ask it to open `https://google.com`, type `hello world` into the search box, and press Enter.
-8. Confirm Browser Use can type into Google's localized search combobox and submit the query. If Google redirects to `/sorry/index`, confirm the redirected URL includes a `continue=` target containing `q=hello+world`.
-9. Switch to dark theme and repeat steps 5-8.
+7. Switch to dark theme and repeat steps 5-6.
 
 #### Expected Results
 - On macOS, codexui launches the Codex.app bundled app-server by default.
 - `CODEXUI_CODEX_COMMAND` still overrides the bundled command when set.
 - `mcpServerStatus/list` includes `node_repl` with `js` and `js_reset`.
 - Browser Use works inside codexui chats in both light and dark theme.
-- New Browser Use contexts receive the vendored `playwright_stealth` init script, Chromium stealth launch args, and English locale headers.
-- The Google validation proves text entry and submit behavior; a Google `/sorry/index` anti-automation redirect is acceptable evidence of submit, but it is not evidence that the challenge was bypassed.
 - The theme switch does not affect tool availability or pending tool-call rendering.
 
 #### Rollback/Cleanup
