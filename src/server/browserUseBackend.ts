@@ -2,6 +2,11 @@ import { createServer, type Socket, type Server } from 'node:net'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
+import {
+  PLAYWRIGHT_STEALTH_CHROMIUM_ARGS,
+  PLAYWRIGHT_STEALTH_CONTEXT_OPTIONS,
+  PLAYWRIGHT_STEALTH_INIT_SCRIPT,
+} from './playwrightStealthPayload.js'
 
 type JsonRpcMessage = {
   jsonrpc?: '2.0'
@@ -39,6 +44,7 @@ type PlaywrightBrowser = {
 type PlaywrightContext = {
   newPage(): Promise<PlaywrightPage>
   newCDPSession(page: PlaywrightPage): Promise<PlaywrightCdpSession>
+  addInitScript(script: string): Promise<void>
 }
 
 type PlaywrightPage = {
@@ -148,7 +154,10 @@ async function launchBrowser(): Promise<PlaywrightBrowser> {
     chromium: { launch(options?: Record<string, unknown>): Promise<PlaywrightBrowser> }
   }>
   const { chromium } = await dynamicImport('playwright')
-  return await chromium.launch({ headless: false })
+  return await chromium.launch({
+    args: [...PLAYWRIGHT_STEALTH_CHROMIUM_ARGS],
+    headless: false,
+  })
 }
 
 function handleConnection(backend: BrowserUseBackendRecord, socket: Socket): void {
@@ -277,7 +286,11 @@ async function handleRequest(
 
 async function createTab(client: BrowserUseClient): Promise<BrowserUseTab> {
   const browser = await client.backend.browserPromise
-  const context = await browser.newContext()
+  const context = await browser.newContext({
+    ...PLAYWRIGHT_STEALTH_CONTEXT_OPTIONS,
+    extraHTTPHeaders: { ...PLAYWRIGHT_STEALTH_CONTEXT_OPTIONS.extraHTTPHeaders },
+  })
+  await context.addInitScript(PLAYWRIGHT_STEALTH_INIT_SCRIPT)
   const page = await context.newPage()
   const tabId = client.backend.nextTabId++
   client.backend.tabs.set(tabId, { clients: new Set([client]), page })
