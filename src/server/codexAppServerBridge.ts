@@ -60,6 +60,10 @@ type RpcProxyRequest = {
   params?: unknown
 }
 
+type RpcExecutor = {
+  rpc: (method: string, params: unknown) => Promise<unknown>
+}
+
 type ServerRequestReply = {
   result?: unknown
   error?: {
@@ -211,6 +215,7 @@ const COMPOSIO_CONNECTORS_PAGE_LIMIT_MAX = 1000
 
 const PROVIDER_MODELS_FETCH_TIMEOUT_MS = 5_000
 
+const THREAD_RESPONSE_TURN_LIMIT = 10
 const THREAD_METHODS_WITH_TURNS = new Set(['thread/read', 'thread/resume', 'thread/fork', 'thread/rollback'])
 const THREAD_TURNS_PAGE_METHOD = 'thread/turns/list'
 const THREAD_SEARCH_FULL_TEXT_THREAD_LIMIT = 100
@@ -881,6 +886,23 @@ export async function sanitizeThreadTurnsInlinePayloads(method: string, result: 
   }
 }
 
+function trimThreadTurnsInRpcResult(method: string, result: unknown): unknown {
+  if (!THREAD_METHODS_WITH_TURNS.has(method)) return result
+
+  const record = asRecord(result)
+  const thread = asRecord(record?.thread)
+  const turns = Array.isArray(thread?.turns) ? thread.turns : null
+  if (!record || !thread || !turns || turns.length <= THREAD_RESPONSE_TURN_LIMIT) return result
+
+  return {
+    ...record,
+    thread: {
+      ...thread,
+      turns: turns.slice(-THREAD_RESPONSE_TURN_LIMIT),
+    },
+  }
+}
+
 function getErrorMessage(payload: unknown, fallback: string): string {
   if (payload instanceof Error && payload.message.trim().length > 0) {
     return payload.message
@@ -1187,6 +1209,64 @@ function extractThreadMessageText(threadReadPayload: unknown): string {
 
 function readNonEmptyString(value: unknown): string {
   return typeof value === 'string' && value.trim().length > 0 ? value : ''
+}
+
+function readThreadArchiveFallbackName(threadReadResult: unknown): string {
+  const record = asRecord(threadReadResult)
+  const thread = asRecord(record?.thread)
+  return (
+    readNonEmptyString(thread?.name)
+    || readNonEmptyString(thread?.title)
+    || readNonEmptyString(thread?.preview)
+    || 'Untitled thread'
+  )
+}
+
+function isArchivedThreadReadResult(threadReadResult: unknown): boolean {
+  const record = asRecord(threadReadResult)
+  const thread = asRecord(record?.thread)
+  const sessionPath = readNonEmptyString(thread?.path)
+  return sessionPath.split(/[\\/]+/u).includes('archived_sessions')
+}
+
+export async function callRpcWithArchiveRecovery(
+  appServer: RpcExecutor,
+  method: string,
+  params: unknown,
+): Promise<unknown> {
+  try {
+    return await appServer.rpc(method, params ?? null)
+  } catch (error) {
+    if (method !== 'thread/archive') {
+      throw error
+    }
+
+    const paramsRecord = asRecord(params)
+    const threadId = readNonEmptyString(paramsRecord?.threadId)
+    const errorMessage = getErrorMessage(error, '')
+    if (!threadId || !errorMessage.includes('no rollout found')) {
+      throw error
+    }
+
+    let threadReadResult: unknown = null
+    try {
+      threadReadResult = await appServer.rpc('thread/read', {
+        threadId,
+        includeTurns: false,
+      })
+      if (isArchivedThreadReadResult(threadReadResult)) {
+        return null
+      }
+    } catch {
+      // If metadata cannot be read, still try materializing a title before retrying archive.
+    }
+
+    await appServer.rpc('thread/name/set', {
+      threadId,
+      name: readThreadArchiveFallbackName(threadReadResult),
+    })
+    return appServer.rpc(method, params ?? null)
+  }
 }
 
 type TerminalQuickCommand = {
@@ -5454,8 +5534,9 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           return
         }
 
-        const rpcResult = await appServer.rpc(body.method, body.params ?? null)
-        const sanitizedResult = await sanitizeThreadTurnsInlinePayloads(body.method, rpcResult)
+        const rpcResult = await callRpcWithArchiveRecovery(appServer, body.method, body.params ?? null)
+        const trimmedResult = trimThreadTurnsInRpcResult(body.method, rpcResult)
+        const sanitizedResult = await sanitizeThreadTurnsInlinePayloads(body.method, trimmedResult)
         const result = THREAD_METHODS_WITH_TURNS.has(body.method)
           ? await mergeSessionSkillInputsIntoThreadResult(sanitizedResult)
           : sanitizedResult
