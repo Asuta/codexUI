@@ -1,5 +1,7 @@
 import { createServer, type Socket, type Server } from 'node:net'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
 import { createRequire } from 'node:module'
 
@@ -67,10 +69,9 @@ type BrowserUseClient = {
 }
 
 const BROWSER_USE_SOCKET_DIR = '/tmp/codex-browser-use'
+const MAX_BROWSER_USE_FRAME_BYTES = 10 * 1024 * 1024
 const CODEX_BROWSER_USE_PEER_AUTHORIZATION =
   '/Applications/Codex.app/Contents/Resources/native/browser-use-peer-authorization.node'
-const BROWSER_USE_CLIENT_PATH =
-  '/Users/igor/.codex/plugins/cache/openai-bundled/browser-use/0.1.0-alpha1/scripts/browser-client.mjs'
 const BROWSER_USE_NATIVE_CREATE_SOURCE =
   'static async create(t){let n=eN();if(n!=null){let r=await n.createConnection(t),i=new e(r);return r.on("data",o=>i.handleData(o)),r.on("close",()=>{i.socket===r&&(i.socket=null)}),i}throw new Error(Q7())}'
 const BROWSER_USE_CODEXUI_CREATE_SOURCE =
@@ -87,7 +88,7 @@ export async function ensureBrowserUseBackendForSession(sessionId: string): Prom
 
   await ensureBrowserUseClientFallbackPatch()
   await mkdir(BROWSER_USE_SOCKET_DIR, { recursive: true })
-  const socketPath = join(BROWSER_USE_SOCKET_DIR, `codexui-${process.pid}-${normalizedSessionId}.sock`)
+  const socketPath = join(BROWSER_USE_SOCKET_DIR, `codexui-${process.pid}-${hashSessionId(normalizedSessionId)}.sock`)
   await rm(socketPath, { force: true })
 
   const backend: BrowserUseBackendRecord = {
@@ -100,36 +101,87 @@ export async function ensureBrowserUseBackendForSession(sessionId: string): Prom
   }
   browserUseBackends.set(normalizedSessionId, backend)
 
-  await new Promise<void>((resolve, reject) => {
-    const onError = (error: Error) => {
-      backend.server.off('listening', onListening)
-      reject(error)
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const onError = (error: Error) => {
+        backend.server.off('listening', onListening)
+        reject(error)
+      }
+      const onListening = () => {
+        backend.server.off('error', onError)
+        resolve()
+      }
+      backend.server.once('error', onError)
+      backend.server.once('listening', onListening)
+      backend.server.listen(socketPath)
+    })
+  } catch (error) {
+    browserUseBackends.delete(normalizedSessionId)
+    await rm(socketPath, { force: true })
+    const browser = await backend.browserPromise.catch(() => null)
+    await browser?.close()
+    throw error
+  }
+}
+
+export async function tryEnsureBrowserUseBackendForSession(sessionId: string): Promise<void> {
+  try {
+    if (platform() !== 'darwin') {
+      return
     }
-    const onListening = () => {
-      backend.server.off('error', onError)
-      resolve()
-    }
-    backend.server.once('error', onError)
-    backend.server.once('listening', onListening)
-    backend.server.listen(socketPath)
-  })
+    await ensureBrowserUseBackendForSession(sessionId)
+  } catch (error) {
+    console.warn('[browser-use] failed to initialize backend:', error instanceof Error ? error.message : String(error))
+  }
 }
 
 async function ensureBrowserUseClientFallbackPatch(): Promise<void> {
   browserUseClientPatchPromise ??= (async () => {
-    const source = await readFile(BROWSER_USE_CLIENT_PATH, 'utf8')
-    if (source.includes(BROWSER_USE_CODEXUI_CREATE_SOURCE)) {
-      return
+    try {
+      const clientPath = resolveBrowserUseClientPath()
+      if (!clientPath) {
+        return
+      }
+      try {
+        await access(clientPath)
+      } catch {
+        return
+      }
+      const source = await readFile(clientPath, 'utf8')
+      if (source.includes(BROWSER_USE_CODEXUI_CREATE_SOURCE)) {
+        return
+      }
+      if (!source.includes(BROWSER_USE_NATIVE_CREATE_SOURCE)) {
+        console.warn('[browser-use] client transport shape changed; codexui fallback was not installed.')
+        return
+      }
+      await writeFile(
+        clientPath,
+        source.replace(BROWSER_USE_NATIVE_CREATE_SOURCE, BROWSER_USE_CODEXUI_CREATE_SOURCE),
+      )
+    } catch (error) {
+      console.warn('[browser-use] client fallback patch skipped:', error instanceof Error ? error.message : String(error))
     }
-    if (!source.includes(BROWSER_USE_NATIVE_CREATE_SOURCE)) {
-      throw new Error('Browser Use client transport shape changed; cannot install codexui fallback.')
-    }
-    await writeFile(
-      BROWSER_USE_CLIENT_PATH,
-      source.replace(BROWSER_USE_NATIVE_CREATE_SOURCE, BROWSER_USE_CODEXUI_CREATE_SOURCE),
-    )
   })()
   await browserUseClientPatchPromise
+}
+
+function resolveBrowserUseClientPath(): string | null {
+  const explicitPath = process.env.CODEXUI_BROWSER_USE_CLIENT_PATH?.trim()
+  if (explicitPath) {
+    return explicitPath
+  }
+  const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), '.codex')
+  return join(
+    codexHome,
+    'plugins',
+    'cache',
+    'openai-bundled',
+    'browser-use',
+    '0.1.0-alpha1',
+    'scripts',
+    'browser-client.mjs',
+  )
 }
 
 export async function closeBrowserUseBackends(): Promise<void> {
@@ -144,10 +196,9 @@ export async function closeBrowserUseBackends(): Promise<void> {
 }
 
 async function launchBrowser(): Promise<PlaywrightBrowser> {
-  const dynamicImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<{
+  const { chromium } = require('playwright') as {
     chromium: { launch(options?: Record<string, unknown>): Promise<PlaywrightBrowser> }
-  }>
-  const { chromium } = await dynamicImport('playwright')
+  }
   return await chromium.launch({ headless: false })
 }
 
@@ -167,7 +218,10 @@ function handleConnection(backend: BrowserUseBackendRecord, socket: Socket): voi
 
   socket.on('data', (chunk) => {
     client.pendingData = Buffer.concat([client.pendingData, chunk])
-    const parsed = parseFramedMessages(client.pendingData)
+    const parsed = parseFramedMessages(client.pendingData, socket)
+    if (!parsed) {
+      return
+    }
     client.pendingData = parsed.remainingData
     for (const message of parsed.messages) {
       void handleMessage(client, message)
@@ -190,20 +244,33 @@ function authorizeSocketPeer(socket: Socket): void {
   }
 }
 
-function parseFramedMessages(data: Buffer): { messages: JsonRpcMessage[], remainingData: Buffer } {
+function parseFramedMessages(data: Buffer, socket: Socket): { messages: JsonRpcMessage[], remainingData: Buffer } | null {
   const messages: JsonRpcMessage[] = []
   let offset = 0
   while (data.length - offset >= 4) {
     const size = data.readUInt32LE(offset)
+    if (size > MAX_BROWSER_USE_FRAME_BYTES) {
+      socket.destroy()
+      return null
+    }
     const end = offset + 4 + size
     if (data.length < end) {
       break
     }
     const text = data.subarray(offset + 4, end).toString('utf8')
-    messages.push(JSON.parse(text) as JsonRpcMessage)
+    try {
+      messages.push(JSON.parse(text) as JsonRpcMessage)
+    } catch {
+      socket.destroy()
+      return null
+    }
     offset = end
   }
   return { messages, remainingData: data.subarray(offset) }
+}
+
+function hashSessionId(sessionId: string): string {
+  return createHash('sha256').update(sessionId).digest('hex').slice(0, 32)
 }
 
 async function handleMessage(client: BrowserUseClient, message: JsonRpcMessage): Promise<void> {

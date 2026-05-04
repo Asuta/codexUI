@@ -11,7 +11,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { writeFile } from 'node:fs/promises'
 import { handleAccountRoutes } from './accountRoutes.js'
-import { ensureBrowserUseBackendForSession } from './browserUseBackend.js'
+import { closeBrowserUseBackends, tryEnsureBrowserUseBackendForSession } from './browserUseBackend.js'
 import { buildAppServerArgs } from './appServerRuntimeConfig.js'
 import { handleReviewRoutes } from './reviewGit.js'
 import { handleSkillsRoutes, initializeSkillsSyncOnStartup } from './skillsRoutes.js'
@@ -5276,7 +5276,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           const params = asRecord(body.params)
           const threadId = typeof params?.threadId === 'string' ? params.threadId : ''
           if (threadId) {
-            await ensureBrowserUseBackendForSession(threadId)
+            await tryEnsureBrowserUseBackendForSession(threadId)
           }
         }
 
@@ -5289,7 +5289,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           const rpcThread = asRecord(rpcRecord?.thread)
           const threadId = typeof rpcThread?.id === 'string' ? rpcThread.id : ''
           if (threadId) {
-            await ensureBrowserUseBackendForSession(threadId)
+            await tryEnsureBrowserUseBackendForSession(threadId)
           }
         }
 
@@ -6592,6 +6592,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
     telegramBridge.stop()
     terminalManager.dispose()
     backendQueueProcessor.dispose()
+    void closeBrowserUseBackends()
     appServer.dispose()
   }
   middleware.subscribeNotifications = (
