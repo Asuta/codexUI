@@ -227,7 +227,7 @@ This file tracks manual regression and feature verification steps.
 ### Browser Use plugin runtime command
 
 #### Feature/Change Name
-codexui exposes Browser Use in chats by using the bundled Codex.app runtime, registering `node_repl`, and starting a session-scoped local Browser Use backend.
+codexui exposes Browser Use in chats by using the bundled Codex.app runtime, registering `node_repl`, and registering a session-scoped local Browser Use backend whose browser launches lazily on first tab use.
 
 #### Prerequisites/Setup
 1. macOS with `/Applications/Codex.app/Contents/Resources/codex` installed.
@@ -249,9 +249,9 @@ codexui exposes Browser Use in chats by using the bundled Codex.app runtime, reg
 - On macOS, codexui launches the Codex.app bundled app-server by default.
 - `CODEXUI_CODEX_COMMAND` still overrides the bundled command when set.
 - `mcpServerStatus/list` includes `node_repl` with `js` and `js_reset`.
-- Browser Use works inside codexui chats in both light and dark theme.
+- Browser Use works inside codexui chats in both light and dark theme, and Chromium launches only after Browser Use requests a tab.
 - Browser Use setup is best-effort: missing plugin files, changed client patch shape, or backend startup errors are logged and do not block normal `turn/start` or `thread/start` RPC calls.
-- Browser Use socket names are derived from a bounded hash of the session id, malformed socket frames close the socket instead of throwing, and backend cleanup runs during bridge disposal.
+- Browser Use socket names are derived from a bounded hash of the session id, malformed socket frames close the socket instead of throwing, unauthorized socket peers are closed, and backend cleanup runs during bridge disposal.
 - The theme switch does not affect tool availability or pending tool-call rendering.
 
 #### Rollback/Cleanup

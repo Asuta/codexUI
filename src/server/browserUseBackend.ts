@@ -27,7 +27,7 @@ type BrowserUseTab = {
 type BrowserUseBackendRecord = {
   server: Server
   socketPath: string
-  browserPromise: Promise<PlaywrightBrowser>
+  browserPromise: Promise<PlaywrightBrowser> | null
   tabs: Map<number, PlaywrightTab>
   nextTabId: number
   sessionId: string
@@ -94,7 +94,7 @@ export async function ensureBrowserUseBackendForSession(sessionId: string): Prom
   const backend: BrowserUseBackendRecord = {
     server: createServer((socket) => handleConnection(backend, socket)),
     socketPath,
-    browserPromise: launchBrowser(),
+    browserPromise: null,
     tabs: new Map(),
     nextTabId: 1,
     sessionId: normalizedSessionId,
@@ -118,7 +118,7 @@ export async function ensureBrowserUseBackendForSession(sessionId: string): Prom
   } catch (error) {
     browserUseBackends.delete(normalizedSessionId)
     await rm(socketPath, { force: true })
-    const browser = await backend.browserPromise.catch(() => null)
+    const browser = await backend.browserPromise?.catch(() => null)
     await browser?.close()
     throw error
   }
@@ -190,7 +190,7 @@ export async function closeBrowserUseBackends(): Promise<void> {
   await Promise.allSettled(backends.map(async (backend) => {
     await new Promise<void>((resolve) => backend.server.close(() => resolve()))
     await rm(backend.socketPath, { force: true })
-    const browser = await backend.browserPromise.catch(() => null)
+    const browser = await backend.browserPromise?.catch(() => null)
     await browser?.close()
   }))
 }
@@ -233,6 +233,7 @@ function authorizeSocketPeer(socket: Socket): void {
   try {
     const fd = (socket as Socket & { _handle?: { fd?: number } })._handle?.fd
     if (typeof fd !== 'number') {
+      socket.destroy()
       return
     }
     const nativeModule = require(CODEX_BROWSER_USE_PEER_AUTHORIZATION) as {
@@ -343,12 +344,17 @@ async function handleRequest(
 }
 
 async function createTab(client: BrowserUseClient): Promise<BrowserUseTab> {
-  const browser = await client.backend.browserPromise
+  const browser = await getBrowser(client.backend)
   const context = await browser.newContext()
   const page = await context.newPage()
   const tabId = client.backend.nextTabId++
   client.backend.tabs.set(tabId, { clients: new Set([client]), page })
   return await serializeTab(tabId, client.backend.tabs.get(tabId), true)
+}
+
+async function getBrowser(backend: BrowserUseBackendRecord): Promise<PlaywrightBrowser> {
+  backend.browserPromise ??= launchBrowser()
+  return await backend.browserPromise
 }
 
 async function getTabs(backend: BrowserUseBackendRecord): Promise<BrowserUseTab[]> {
