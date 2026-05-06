@@ -20,6 +20,7 @@ $configFile = Join-Path $logDir "tray-config.json"
 $mutexName = "Local\CodexUITrayLauncher"
 $script:mutex = New-Object System.Threading.Mutex($false, $mutexName)
 $script:notifyIcon = $null
+$script:appContext = $null
 $script:config = $null
 
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -566,7 +567,9 @@ $exitItem.add_Click({
   Stop-CodexUI
   $script:notifyIcon.Visible = $false
   $script:notifyIcon.Dispose()
-  $form.Close()
+  if ($script:appContext) {
+    $script:appContext.ExitThread()
+  }
 })
 
 $script:notifyIcon.ContextMenuStrip = $menu
@@ -580,8 +583,11 @@ $timer.Start()
 Start-CodexUI
 Start-PublicProxy
 Start-Frp
-[System.Windows.Forms.Application]::Run($form)
+$script:appContext = New-Object System.Windows.Forms.ApplicationContext
+[System.Windows.Forms.Application]::Run($script:appContext)
 
 $timer.Stop()
+$script:notifyIcon.Visible = $false
+$script:notifyIcon.Dispose()
 $script:mutex.ReleaseMutex()
 $script:mutex.Dispose()
