@@ -10,8 +10,11 @@ $stdoutLog = Join-Path $logDir "codexui-tray.log"
 $stderrLog = Join-Path $logDir "codexui-tray.err.log"
 $frpStdoutLog = Join-Path $logDir "codexui-frp.log"
 $frpStderrLog = Join-Path $logDir "codexui-frp.err.log"
+$publicProxyStdoutLog = Join-Path $logDir "codexui-public-proxy.log"
+$publicProxyStderrLog = Join-Path $logDir "codexui-public-proxy.err.log"
 $pidFile = Join-Path $logDir "codexui-tray.pid"
 $frpPidFile = Join-Path $logDir "codexui-frp.pid"
+$publicProxyPidFile = Join-Path $logDir "codexui-public-proxy.pid"
 $errorLog = Join-Path $logDir "codexui-tray-host.err.log"
 $configFile = Join-Path $logDir "tray-config.json"
 $mutexName = "Local\CodexUITrayLauncher"
@@ -29,6 +32,8 @@ function Get-DefaultConfig {
     frpExe = "C:\Users\youdo\Documents\Codex\2026-05-06\new-chat-2\frp\frp_0.68.1_windows_amd64\frpc.exe"
     frpConfig = "C:\Users\youdo\Documents\Codex\2026-05-06\new-chat-2\frpc-hk-5173.toml"
     publicUrl = "http://162.211.183.146:18080/"
+    publicProxyPort = 5189
+    publicPassword = ""
   }
 }
 
@@ -39,6 +44,8 @@ function Save-Config($config) {
   $frpExe = if ($config.frpExe) { [string]$config.frpExe } else { "" }
   $frpConfig = if ($config.frpConfig) { [string]$config.frpConfig } else { "" }
   $publicUrl = if ($config.publicUrl) { [string]$config.publicUrl } else { "" }
+  $publicProxyPort = if ($config.publicProxyPort) { [int]$config.publicProxyPort } else { 5189 }
+  $publicPassword = if ($config.publicPassword) { [string]$config.publicPassword } else { "" }
   [ordered]@{
     port = $port
     host = $bindHost
@@ -46,8 +53,10 @@ function Save-Config($config) {
     frpExe = $frpExe
     frpConfig = $frpConfig
     publicUrl = $publicUrl
+    publicProxyPort = $publicProxyPort
+    publicPassword = $publicPassword
   } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $configFile -Encoding UTF8
-  Write-HostErrorLog "Saved config: port=$port host=$bindHost frpEnabled=$frpEnabled"
+  Write-HostErrorLog "Saved config: port=$port host=$bindHost frpEnabled=$frpEnabled publicPasswordSet=$([bool]$publicPassword)"
 }
 
 function Read-Config {
@@ -68,7 +77,12 @@ function Read-Config {
     $frpExe = if ($loaded.frpExe) { [string]$loaded.frpExe } else { [string]$defaultConfig.frpExe }
     $frpConfig = if ($loaded.frpConfig) { [string]$loaded.frpConfig } else { [string]$defaultConfig.frpConfig }
     $publicUrl = if ($loaded.publicUrl) { [string]$loaded.publicUrl } else { [string]$defaultConfig.publicUrl }
-    $needsNormalize = $null -eq $loaded.frpEnabled -or -not $loaded.frpExe -or -not $loaded.frpConfig -or -not $loaded.publicUrl
+    $publicProxyPort = if ($loaded.publicProxyPort) { [int]$loaded.publicProxyPort } else { [int]$defaultConfig.publicProxyPort }
+    if ($publicProxyPort -lt 1 -or $publicProxyPort -gt 65535) {
+      throw "Public proxy port must be between 1 and 65535."
+    }
+    $publicPassword = if ($loaded.publicPassword) { [string]$loaded.publicPassword } else { "" }
+    $needsNormalize = $null -eq $loaded.frpEnabled -or -not $loaded.frpExe -or -not $loaded.frpConfig -or -not $loaded.publicUrl -or -not $loaded.publicProxyPort -or $null -eq $loaded.publicPassword
     $normalizedConfig = [pscustomobject]@{
       port = $port
       host = $bindHost
@@ -76,6 +90,8 @@ function Read-Config {
       frpExe = $frpExe
       frpConfig = $frpConfig
       publicUrl = $publicUrl
+      publicProxyPort = $publicProxyPort
+      publicPassword = $publicPassword
     }
     if ($needsNormalize) {
       Save-Config $normalizedConfig
@@ -150,12 +166,33 @@ function Get-TrackedFrpProcess {
   }
 }
 
+function Get-TrackedPublicProxyProcess {
+  if (-not (Test-Path $publicProxyPidFile)) {
+    return $null
+  }
+
+  $rawPid = (Get-Content -LiteralPath $publicProxyPidFile -Raw -ErrorAction SilentlyContinue).Trim()
+  if (-not $rawPid) {
+    return $null
+  }
+
+  try {
+    return Get-Process -Id ([int]$rawPid) -ErrorAction Stop
+  } catch {
+    return $null
+  }
+}
+
 function Test-CodexUIRunning {
   return $null -ne (Get-TrackedProcess)
 }
 
 function Test-FrpRunning {
   return $null -ne (Get-TrackedFrpProcess)
+}
+
+function Test-PublicProxyRunning {
+  return $null -ne (Get-TrackedPublicProxyProcess)
 }
 
 function Get-ConfiguredUrl {
@@ -189,13 +226,14 @@ function Sync-FrpConfigPort {
   }
 
   $content = Get-Content -LiteralPath $script:config.frpConfig -Raw
+  $frpLocalPort = [int]$script:config.publicProxyPort
   if ($content -match '(?m)^localPort\s*=') {
-    $content = [regex]::Replace($content, '(?m)^localPort\s*=\s*\d+\s*$', "localPort = $($script:config.port)", 1)
+    $content = [regex]::Replace($content, '(?m)^localPort\s*=\s*\d+\s*$', "localPort = $frpLocalPort", 1)
   } else {
-    $content = $content.TrimEnd() + "`r`nlocalPort = $($script:config.port)`r`n"
+    $content = $content.TrimEnd() + "`r`nlocalPort = $frpLocalPort`r`n"
   }
   [System.IO.File]::WriteAllText($script:config.frpConfig, $content, [System.Text.UTF8Encoding]::new($false))
-  Write-HostErrorLog "Synced FRP localPort=$($script:config.port)"
+  Write-HostErrorLog "Synced FRP localPort=$frpLocalPort"
   return $true
 }
 
@@ -221,6 +259,40 @@ function Start-CodexUI {
   Set-Content -LiteralPath $pidFile -Value $process.Id
   Update-Tooltip
   Show-Message "CodexUI" "Started in the background."
+}
+
+function Start-PublicProxy {
+  Reload-Config
+  if (Test-PublicProxyRunning) {
+    return
+  }
+
+  Remove-Item -LiteralPath $publicProxyStdoutLog, $publicProxyStderrLog -ErrorAction SilentlyContinue
+  $previousProxyPort = $env:CODEXUI_PUBLIC_PROXY_PORT
+  $previousTargetPort = $env:CODEXUI_TARGET_PORT
+  $previousPassword = $env:CODEXUI_PUBLIC_PASSWORD
+  $previousSecret = $env:CODEXUI_PUBLIC_SESSION_SECRET
+  $env:CODEXUI_PUBLIC_PROXY_PORT = [string]$script:config.publicProxyPort
+  $env:CODEXUI_TARGET_PORT = [string]$script:config.port
+  $env:CODEXUI_PUBLIC_PASSWORD = [string]$script:config.publicPassword
+  if ([string]::IsNullOrWhiteSpace($previousSecret)) {
+    $env:CODEXUI_PUBLIC_SESSION_SECRET = [guid]::NewGuid().ToString("N")
+  }
+
+  $process = Start-Process -FilePath "node.exe" `
+    -ArgumentList @((Join-Path $projectDir "scripts\public-auth-proxy.cjs")) `
+    -WorkingDirectory $projectDir `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $publicProxyStdoutLog `
+    -RedirectStandardError $publicProxyStderrLog `
+    -PassThru
+
+  if ($null -eq $previousProxyPort) { Remove-Item Env:\CODEXUI_PUBLIC_PROXY_PORT -ErrorAction SilentlyContinue } else { $env:CODEXUI_PUBLIC_PROXY_PORT = $previousProxyPort }
+  if ($null -eq $previousTargetPort) { Remove-Item Env:\CODEXUI_TARGET_PORT -ErrorAction SilentlyContinue } else { $env:CODEXUI_TARGET_PORT = $previousTargetPort }
+  if ($null -eq $previousPassword) { Remove-Item Env:\CODEXUI_PUBLIC_PASSWORD -ErrorAction SilentlyContinue } else { $env:CODEXUI_PUBLIC_PASSWORD = $previousPassword }
+  if ($null -eq $previousSecret) { Remove-Item Env:\CODEXUI_PUBLIC_SESSION_SECRET -ErrorAction SilentlyContinue } else { $env:CODEXUI_PUBLIC_SESSION_SECRET = $previousSecret }
+
+  Set-Content -LiteralPath $publicProxyPidFile -Value $process.Id
 }
 
 function Start-Frp {
@@ -276,6 +348,22 @@ function Stop-CodexUI {
   Update-Tooltip
 }
 
+function Stop-PublicProxy {
+  $process = Get-TrackedPublicProxyProcess
+  if ($process) {
+    Start-Process -FilePath "taskkill.exe" -ArgumentList @("/PID", "$($process.Id)", "/T", "/F") -WindowStyle Hidden -Wait
+  }
+  Get-CimInstance Win32_Process |
+    Where-Object {
+      $_.CommandLine -like "*public-auth-proxy.cjs*" -and
+      $_.CommandLine -like "*$projectDir*"
+    } |
+    ForEach-Object {
+      Start-Process -FilePath "taskkill.exe" -ArgumentList @("/PID", "$($_.ProcessId)", "/T", "/F") -WindowStyle Hidden -Wait
+    }
+  Remove-Item -LiteralPath $publicProxyPidFile -ErrorAction SilentlyContinue
+}
+
 function Stop-Frp {
   $process = Get-TrackedFrpProcess
   if ($process) {
@@ -297,8 +385,17 @@ function Stop-Frp {
 
 function Restart-CodexUI {
   Stop-CodexUI
+  Stop-PublicProxy
   Start-Sleep -Milliseconds 500
   Start-CodexUI
+  Start-PublicProxy
+  Restart-Frp
+}
+
+function Restart-PublicProxy {
+  Stop-PublicProxy
+  Start-Sleep -Milliseconds 500
+  Start-PublicProxy
   Restart-Frp
 }
 
@@ -357,6 +454,8 @@ function Set-Port {
     frpExe = $script:config.frpExe
     frpConfig = $script:config.frpConfig
     publicUrl = $script:config.publicUrl
+    publicProxyPort = $script:config.publicProxyPort
+    publicPassword = $script:config.publicPassword
   })
   Reload-Config
   if ([int]$script:config.port -ne $parsedPort) {
@@ -369,6 +468,32 @@ function Set-Port {
   Show-Message "CodexUI" "Port changed to $parsedPort and service restarted."
 }
 
+function Set-PublicPassword {
+  Reload-Config
+  $inputPassword = [Microsoft.VisualBasic.Interaction]::InputBox(
+    "Enter the password required for public FRP access. Leave empty to disable public password protection.",
+    "CodexUI Public Password",
+    [string]$script:config.publicPassword
+  )
+  if ($null -eq $inputPassword) {
+    return
+  }
+
+  $nextPassword = $inputPassword.Trim()
+  Save-Config ([ordered]@{
+    port = $script:config.port
+    host = $script:config.host
+    frpEnabled = $script:config.frpEnabled
+    frpExe = $script:config.frpExe
+    frpConfig = $script:config.frpConfig
+    publicUrl = $script:config.publicUrl
+    publicPassword = $nextPassword
+  })
+  Reload-Config
+  Restart-CodexUI
+  Show-Message "CodexUI" "Public password updated. Localhost remains password-free."
+}
+
 function Toggle-Frp {
   Reload-Config
   $nextEnabled = -not [bool]$script:config.frpEnabled
@@ -379,6 +504,8 @@ function Toggle-Frp {
     frpExe = $script:config.frpExe
     frpConfig = $script:config.frpConfig
     publicUrl = $script:config.publicUrl
+    publicProxyPort = $script:config.publicProxyPort
+    publicPassword = $script:config.publicPassword
   })
   Reload-Config
   if ($script:config.frpEnabled) {
@@ -413,8 +540,10 @@ $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $openItem = $menu.Items.Add("Open CodexUI")
 $openPublicItem = $menu.Items.Add("Open public URL")
 $setPortItem = $menu.Items.Add("Set port...")
+$setPasswordItem = $menu.Items.Add("Set public password...")
 $configItem = $menu.Items.Add("Open config")
 $restartItem = $menu.Items.Add("Restart service")
+$restartPublicProxyItem = $menu.Items.Add("Restart public proxy")
 $restartFrpItem = $menu.Items.Add("Restart FRP tunnel")
 $toggleFrpItem = $menu.Items.Add("Toggle FRP tunnel")
 $logsItem = $menu.Items.Add("Open logs")
@@ -424,13 +553,16 @@ $exitItem = $menu.Items.Add("Exit")
 $openItem.add_Click({ Open-CodexUI })
 $openPublicItem.add_Click({ Open-PublicUrl })
 $setPortItem.add_Click({ Set-Port })
+$setPasswordItem.add_Click({ Set-PublicPassword })
 $configItem.add_Click({ Open-Config })
 $restartItem.add_Click({ Restart-CodexUI })
+$restartPublicProxyItem.add_Click({ Restart-PublicProxy })
 $restartFrpItem.add_Click({ Restart-Frp })
 $toggleFrpItem.add_Click({ Toggle-Frp })
 $logsItem.add_Click({ Open-Logs })
 $exitItem.add_Click({
   Stop-Frp
+  Stop-PublicProxy
   Stop-CodexUI
   $script:notifyIcon.Visible = $false
   $script:notifyIcon.Dispose()
@@ -446,6 +578,7 @@ $timer.add_Tick({ Update-Tooltip })
 $timer.Start()
 
 Start-CodexUI
+Start-PublicProxy
 Start-Frp
 [System.Windows.Forms.Application]::Run($form)
 
