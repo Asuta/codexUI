@@ -31,7 +31,7 @@ function run(command, args, options = {}) {
 }
 
 const passthroughArgs = process.argv.slice(2)
-const viteBinPath = join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
+const viteEntryPath = join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js')
 const vueTscBinPath = join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'vue-tsc.cmd' : 'vue-tsc')
 
 if (isAndroidRuntime()) {
@@ -49,7 +49,7 @@ if (isAndroidRuntime()) {
   ])
 }
 
-if (!existsSync(viteBinPath) || !existsSync(vueTscBinPath)) {
+if (!existsSync(viteEntryPath) || !existsSync(vueTscBinPath)) {
   const install = spawnSync('pnpm', ['install'], { stdio: 'inherit', env: process.env })
   if (install.error) {
     throw install.error
@@ -59,4 +59,4 @@ if (!existsSync(viteBinPath) || !existsSync(vueTscBinPath)) {
   }
 }
 
-run(viteBinPath, passthroughArgs)
+run(process.execPath, [viteEntryPath, ...passthroughArgs])

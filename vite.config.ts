@@ -111,7 +111,7 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 5173,
-    allowedHosts: [".trycloudflare.com"],
+    allowedHosts: [".trycloudflare.com", ".frp-any.com", "frp-any.com"],
     watch: {
       ignored: [
         '**/.omx/**',
