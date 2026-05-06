@@ -30,7 +30,7 @@ function run(command, args, options = {}) {
   process.exit(result.status ?? 1)
 }
 
-const passthroughArgs = process.argv.slice(2)
+const passthroughArgs = process.argv.slice(2).filter((arg) => arg !== '--')
 const viteEntryPath = join(process.cwd(), 'node_modules', 'vite', 'bin', 'vite.js')
 const vueTscBinPath = join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'vue-tsc.cmd' : 'vue-tsc')
 
