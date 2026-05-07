@@ -66,6 +66,18 @@ function normalizeLocalImagePath(rawPath: string): string {
   return trimmed
 }
 
+export function decodeCodexLocalImagePathQuery(query: Record<string, unknown>): string {
+  const encodedPath = typeof query.p === 'string' ? query.p.trim() : ''
+  if (encodedPath) {
+    try {
+      return Buffer.from(encodedPath, 'base64url').toString('utf8')
+    } catch {
+      return ''
+    }
+  }
+  return typeof query.path === 'string' ? query.path : ''
+}
+
 function readWildcardPathParam(value: unknown): string {
   if (typeof value === 'string') return value
   if (Array.isArray(value)) return value.join('/')
@@ -87,7 +99,7 @@ export function createServer(options: ServerOptions = {}): ServerInstance {
 
   // 3. Serve local images referenced in markdown (desktop parity for absolute image paths)
   app.get('/codex-local-image', (req, res) => {
-    const rawPath = typeof req.query.path === 'string' ? req.query.path : ''
+    const rawPath = decodeCodexLocalImagePathQuery(req.query)
     const localPath = normalizeLocalImagePath(rawPath)
     if (!localPath || !isAbsolute(localPath)) {
       res.status(400).json({ error: 'Expected absolute local file path.' })

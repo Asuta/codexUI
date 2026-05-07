@@ -11,9 +11,18 @@ const webpBase64 = 'UklGRiIAAABXRUJQVlA4IC4AAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=
 function localImagePathFromProxyUrl(value: string): string {
   const parsed = new URL(value, 'http://localhost')
   expect(parsed.pathname).toBe('/codex-local-image')
-  const imagePath = parsed.searchParams.get('path')
+  const imagePath = parsed.searchParams.get('p')
+    ? Buffer.from(parsed.searchParams.get('p') ?? '', 'base64url').toString('utf8')
+    : parsed.searchParams.get('path')
   expect(imagePath).toBeTruthy()
   return imagePath ?? ''
+}
+
+function expectLocalImageProxyUrl(value: unknown): asserts value is string {
+  expect(value).toEqual(expect.any(String))
+  const parsed = new URL(value as string, 'http://localhost')
+  expect(parsed.pathname).toBe('/codex-local-image')
+  expect(Boolean(parsed.searchParams.get('p') || parsed.searchParams.get('path'))).toBe(true)
 }
 
 describe('thread inline media sanitization', () => {
@@ -56,11 +65,11 @@ describe('thread inline media sanitization', () => {
     const content = userMessage.content as Array<Record<string, unknown>>
     const images = userMessage.images as string[]
 
-    expect(content[0].url).toMatch(/^\/codex-local-image\?path=/)
-    expect(images[0]).toMatch(/^\/codex-local-image\?path=/)
+    expectLocalImageProxyUrl(content[0].url)
+    expectLocalImageProxyUrl(images[0])
     expect(generatedImage.type).toBe('imageView')
     expect(generatedImage.path).toEqual(expect.any(String))
-    expect(toolOutput.result).toMatch(/^\/codex-local-image\?path=/)
+    expectLocalImageProxyUrl(toolOutput.result)
 
     expect(existsSync(localImagePathFromProxyUrl(content[0].url as string))).toBe(true)
     expect(existsSync(localImagePathFromProxyUrl(images[0]))).toBe(true)
@@ -150,7 +159,8 @@ describe('thread inline media sanitization', () => {
 
     const images = result.thread.turns[0].items[0].images
     expect(images).toHaveLength(3)
-    expect(images.every((image) => image.startsWith('/codex-local-image?path='))).toBe(true)
+    expect(images.every((image) => image.startsWith('/codex-local-image?'))).toBe(true)
+    images.forEach(expectLocalImageProxyUrl)
 
     const [jpegPath, webpPath, gifPath] = images.map(localImagePathFromProxyUrl)
     expect(jpegPath.endsWith('.jpg')).toBe(true)
@@ -199,7 +209,7 @@ describe('thread inline media sanitization', () => {
     }
 
     const imageUrl = result.thread.turns[0].items[0].replacement_history[0].content[0].image_url
-    expect(imageUrl).toMatch(/^\/codex-local-image\?path=/)
+    expectLocalImageProxyUrl(imageUrl)
     expect(existsSync(localImagePathFromProxyUrl(imageUrl))).toBe(true)
   })
 

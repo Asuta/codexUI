@@ -457,7 +457,7 @@ async function persistInlineDataUrlToLocalFile(dataUrl: string, baseName: string
 }
 
 function toLocalImageProxyUrl(path: string): string {
-  return `/codex-local-image?path=${encodeURIComponent(path)}`
+  return `/codex-local-image?p=${Buffer.from(path, 'utf8').toString('base64url')}`
 }
 
 const INLINE_IMAGE_FIELD_NAMES = new Set([

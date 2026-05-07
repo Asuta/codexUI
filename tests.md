@@ -4542,8 +4542,37 @@ Opening an existing long thread hydrates only the newest turn page first, then l
 #### Expected Results
 - Initial open uses `thread/read` metadata plus `thread/turns/list` with a small page size.
 - Older turns load only when the user scrolls upward or clicks the load button.
-- Generated-image payloads in paged responses still render through `/codex-local-image?path=...`.
+- Generated-image payloads in paged responses still render through `/codex-local-image?p=...`.
 - If `thread/turns/list` is unavailable, the thread still opens through the full `thread/read` fallback.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
+### Tunnel-safe local Markdown images
+
+#### Feature/Change Name
+Local image paths embedded in Markdown render correctly through local access and intranet tunnel/proxy access.
+
+#### Prerequisites/Setup
+1. Dev server restarted after this change (`pnpm run dev`)
+2. A thread contains Markdown image links to absolute Windows paths under `C:/Users/youdo/.codex/generated_images/...`
+3. The same thread is accessible from local port and from an intranet tunnel URL
+4. Light theme and dark theme are available from the appearance switcher
+
+#### Steps
+1. In light theme, open the thread locally and confirm generated-image Markdown links render as images.
+2. Confirm the image card width hugs the actual image width and does not leave a gray panel to the right.
+3. Open the same thread through the tunnel/proxy URL.
+4. Confirm the same Markdown image links render as images rather than falling back to raw `![alt](C:/...)` text.
+5. Switch to dark theme and repeat steps 1 through 4.
+
+#### Expected Results
+- Local image URLs use tunnel-safe `/codex-local-image?p=...` encoding while keeping legacy `/codex-local-image?path=...` support.
+- The `/codex-local-image` route decodes `p` back into the original absolute path and serves the image file.
+- Markdown image buttons shrink to the displayed image instead of filling the available message width.
+- Failed image rendering no longer occurs solely because a tunnel/proxy rejects raw Windows path query strings.
 
 #### Rollback/Cleanup
 - None.

@@ -2586,16 +2586,36 @@ function toRenderableImageUrl(value: string): string {
   }
 
   if (normalized.startsWith('file://')) {
-    return `/codex-local-image?path=${encodeURIComponent(normalized)}`
+    return toLocalImageProxyUrl(normalized)
   }
 
   const looksLikeUnixAbsolute = normalized.startsWith('/')
   const looksLikeWindowsAbsolute = /^[A-Za-z]:[\\/]/u.test(normalized)
   if (looksLikeUnixAbsolute || looksLikeWindowsAbsolute) {
-    return `/codex-local-image?path=${encodeURIComponent(normalized)}`
+    return toLocalImageProxyUrl(normalized)
   }
 
   return normalized
+}
+
+function encodeBase64Url(value: string): string {
+  try {
+    const bytes = new TextEncoder().encode(value)
+    let binary = ''
+    for (const byte of bytes) {
+      binary += String.fromCharCode(byte)
+    }
+    return btoa(binary).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '')
+  } catch {
+    return ''
+  }
+}
+
+function toLocalImageProxyUrl(path: string): string {
+  const encodedPath = encodeBase64Url(path)
+  return encodedPath
+    ? `/codex-local-image?p=${encodedPath}`
+    : `/codex-local-image?path=${encodeURIComponent(path)}`
 }
 
 function toBrowseUrl(pathValue: string): string {
@@ -4457,7 +4477,7 @@ onBeforeUnmount(() => {
 }
 
 .message-image-button {
-  @apply block rounded-xl overflow-hidden border border-slate-300 bg-white p-0 transition hover:border-slate-400;
+  @apply inline-flex w-fit max-w-full rounded-xl overflow-hidden border border-slate-300 bg-white p-0 transition hover:border-slate-400;
 }
 
 .message-image-preview {
