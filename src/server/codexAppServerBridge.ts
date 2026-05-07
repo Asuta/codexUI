@@ -212,6 +212,7 @@ const COMPOSIO_CONNECTORS_PAGE_LIMIT_MAX = 1000
 const PROVIDER_MODELS_FETCH_TIMEOUT_MS = 5_000
 
 const THREAD_METHODS_WITH_TURNS = new Set(['thread/read', 'thread/resume', 'thread/fork', 'thread/rollback'])
+const THREAD_TURNS_PAGE_METHOD = 'thread/turns/list'
 const THREAD_SEARCH_FULL_TEXT_THREAD_LIMIT = 100
 const PROJECTLESS_THREAD_DIRECTORY_MAX_ATTEMPTS = 100
 const PROJECTLESS_THREAD_SLUG_MAX_LENGTH = 80
@@ -622,12 +623,15 @@ async function sanitizeInlinePayloadDeep(
 }
 
 export async function sanitizeThreadTurnsInlinePayloads(method: string, result: unknown): Promise<unknown> {
-  if (!THREAD_METHODS_WITH_TURNS.has(method)) return result
+  if (!THREAD_METHODS_WITH_TURNS.has(method) && method !== THREAD_TURNS_PAGE_METHOD) return result
 
   const record = asRecord(result)
   const thread = asRecord(record?.thread)
-  const turns = Array.isArray(thread?.turns) ? thread.turns : null
-  if (!record || !thread || !turns || turns.length === 0) return result
+  const sourceTurns = method === THREAD_TURNS_PAGE_METHOD
+    ? record?.data
+    : thread?.turns
+  const turns = Array.isArray(sourceTurns) ? sourceTurns : null
+  if (!record || !turns || turns.length === 0) return result
 
   let changed = false
   const nextTurns: unknown[] = []
@@ -676,6 +680,13 @@ export async function sanitizeThreadTurnsInlinePayloads(method: string, result: 
   }
 
   if (!changed) return result
+  if (method === THREAD_TURNS_PAGE_METHOD) {
+    return {
+      ...record,
+      data: nextTurns,
+    }
+  }
+  if (!thread) return result
   return {
     ...record,
     thread: {

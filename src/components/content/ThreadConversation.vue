@@ -1219,6 +1219,8 @@ const props = defineProps<{
   pendingRequests: UiServerRequest[]
   liveOverlay: UiLiveOverlay | null
   isLoading: boolean
+  canLoadOlderMessages?: boolean
+  isLoadingOlderMessages?: boolean
   activeThreadId: string
   cwd: string
 }>()
@@ -1227,6 +1229,7 @@ const emit = defineEmits<{
   forkThread: [payload: { threadId: string; turnIndex: number }]
   rollback: [payload: { turnId: string }]
   implementPlan: [payload: { turnId: string }]
+  loadOlderMessages: [done: () => void]
   respondServerRequest: [payload: { id: number; result?: unknown; error?: { code?: number; message: string } }]
 }>()
 
@@ -1336,7 +1339,7 @@ const renderWindowStart = ref(0)
 const isLoadingMore = ref(false)
 
 const visibleMessages = computed(() => props.messages.slice(renderWindowStart.value))
-const hasMoreAbove = computed(() => renderWindowStart.value > 0)
+const hasMoreAbove = computed(() => renderWindowStart.value > 0 || props.canLoadOlderMessages === true)
 
 const showJumpToLatestButton = computed(
   () => !autoFollowOutput.value && (props.messages.length > 0 || props.pendingRequests.length > 0 || Boolean(props.liveOverlay)),
@@ -3995,7 +3998,11 @@ async function loadMoreAbove(): Promise<void> {
   const prevScrollHeight = container.scrollHeight
   const prevScrollTop = container.scrollTop
 
-  renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
+  if (renderWindowStart.value > 0) {
+    renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
+  } else if (props.canLoadOlderMessages === true) {
+    await new Promise<void>((resolve) => emit('loadOlderMessages', resolve))
+  }
 
   await nextTick()
 
@@ -4157,7 +4164,12 @@ function onConversationScroll(): void {
   const container = conversationListRef.value
   if (!container || props.isLoading) return
   autoFollowOutput.value = isAtBottom(container)
-  if (hasMoreAbove.value && !isLoadingMore.value && container.scrollTop < LOAD_MORE_SCROLL_THRESHOLD_PX) {
+  if (
+    hasMoreAbove.value &&
+    !isLoadingMore.value &&
+    props.isLoadingOlderMessages !== true &&
+    container.scrollTop < LOAD_MORE_SCROLL_THRESHOLD_PX
+  ) {
     void loadMoreAbove()
   }
 }

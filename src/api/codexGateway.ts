@@ -25,6 +25,7 @@ import {
   readActiveTurnIdFromResponse,
   normalizeThreadGroupsV2,
   normalizeThreadMessagesV2,
+  normalizeThreadTurnsV2,
   readThreadInProgressFromResponse,
 } from './normalizers/v2'
 import type {
@@ -403,6 +404,14 @@ type ThreadFileChangeFallbackEntry = {
 
 type ThreadTurnIndexById = Record<string, number>
 
+export type ThreadTurnPage = {
+  messages: UiMessage[]
+  nextCursor: string | null
+  turnIndexByTurnId: ThreadTurnIndexById
+  activeTurnId: string
+  inProgress: boolean
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -574,17 +583,48 @@ function normalizeThreadFileChangeFallback(value: unknown): ThreadFileChangeFall
   return normalized
 }
 
-function buildTurnIndexByTurnId(payload: ThreadReadResponse): ThreadTurnIndexById {
-  const turns = Array.isArray(payload.thread.turns) ? payload.thread.turns : []
+function buildTurnIndexByTurnIdFromTurns(turns: Turn[], turnIndexOffset = 0): ThreadTurnIndexById {
   const lookup: ThreadTurnIndexById = {}
 
   for (let turnIndex = 0; turnIndex < turns.length; turnIndex += 1) {
     const turn = turns[turnIndex]
     if (typeof turn?.id !== 'string' || turn.id.length === 0) continue
-    lookup[turn.id] = turnIndex
+    lookup[turn.id] = turnIndex + turnIndexOffset
   }
 
   return lookup
+}
+
+function buildTurnIndexByTurnId(payload: ThreadReadResponse): ThreadTurnIndexById {
+  const turns = Array.isArray(payload.thread.turns) ? payload.thread.turns : []
+  return buildTurnIndexByTurnIdFromTurns(turns)
+}
+
+function readActiveTurnIdFromTurns(turns: Turn[]): string {
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    const turn = turns[index]
+    if (turn?.status === 'inProgress' && typeof turn.id === 'string' && turn.id.trim().length > 0) {
+      return turn.id.trim()
+    }
+  }
+  return ''
+}
+
+function readTurnPageInProgress(turns: Turn[]): boolean {
+  return turns.at(-1)?.status === 'inProgress'
+}
+
+function normalizeThreadTurnPage(payload: unknown): ThreadTurnPage {
+  const record = asRecord(payload)
+  const turns = Array.isArray(record?.data) ? record.data as Turn[] : []
+  const nextCursor = readString(record?.nextCursor ?? record?.next_cursor)
+  return {
+    messages: normalizeThreadTurnsV2(turns),
+    nextCursor,
+    turnIndexByTurnId: buildTurnIndexByTurnIdFromTurns(turns),
+    activeTurnId: readActiveTurnIdFromTurns(turns),
+    inProgress: readTurnPageInProgress(turns),
+  }
 }
 
 async function fetchThreadFileChangeFallback(threadId: string): Promise<ThreadFileChangeFallbackEntry[]> {
@@ -731,6 +771,31 @@ async function getThreadDetailV2(threadId: string): Promise<{
   }
 }
 
+async function getThreadMetadataV2(threadId: string): Promise<{
+  inProgress: boolean
+  activeTurnId: string
+  turnIndexByTurnId: ThreadTurnIndexById
+}> {
+  const payload = await callRpc<ThreadReadResponse>('thread/read', {
+    threadId,
+    includeTurns: false,
+  })
+  return {
+    inProgress: readThreadInProgressFromResponse(payload),
+    activeTurnId: readActiveTurnIdFromResponse(payload),
+    turnIndexByTurnId: buildTurnIndexByTurnId(payload),
+  }
+}
+
+async function getThreadTurnPageV2(threadId: string, cursor: string | null, limit: number): Promise<ThreadTurnPage> {
+  const payload = await callRpc<unknown>('thread/turns/list', {
+    threadId,
+    cursor,
+    limit,
+  })
+  return normalizeThreadTurnPage(payload)
+}
+
 export async function getThreadGroups(): Promise<UiProjectGroup[]> {
   try {
     return (await getThreadGroupsPageV2(null, INITIAL_THREAD_LIST_LIMIT)).groups
@@ -772,6 +837,26 @@ export async function getThreadDetail(threadId: string): Promise<{
     return await getThreadDetailV2(threadId)
   } catch (error) {
     throw normalizeCodexApiError(error, `Failed to load thread ${threadId}`, 'thread/read')
+  }
+}
+
+export async function getThreadMetadata(threadId: string): Promise<{
+  inProgress: boolean
+  activeTurnId: string
+  turnIndexByTurnId: ThreadTurnIndexById
+}> {
+  try {
+    return await getThreadMetadataV2(threadId)
+  } catch (error) {
+    throw normalizeCodexApiError(error, `Failed to load thread ${threadId} metadata`, 'thread/read')
+  }
+}
+
+export async function getThreadTurnPage(threadId: string, cursor: string | null = null, limit = 5): Promise<ThreadTurnPage> {
+  try {
+    return await getThreadTurnPageV2(threadId, cursor, limit)
+  } catch (error) {
+    throw normalizeCodexApiError(error, `Failed to load thread ${threadId} turns`, 'thread/turns/list')
   }
 }
 

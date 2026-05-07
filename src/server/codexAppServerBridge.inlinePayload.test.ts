@@ -234,6 +234,33 @@ describe('thread inline media sanitization', () => {
     expect(result.thread.turns.every((turn) => turn.items[0].type === 'imageView')).toBe(true)
   })
 
+  it('externalizes inline images in paged thread turn responses', async () => {
+    const result = await sanitizeThreadTurnsInlinePayloads('thread/turns/list', {
+      data: [
+        {
+          id: 'turn-1',
+          items: [
+            {
+              id: 'generated-1',
+              type: 'imageGeneration',
+              result: pngBase64,
+            },
+          ],
+        },
+      ],
+      nextCursor: 'older-turn',
+    }) as {
+      data: Array<{
+        items: Array<Record<string, unknown>>
+      }>
+      nextCursor: string
+    }
+
+    expect(result.nextCursor).toBe('older-turn')
+    expect(result.data[0].items[0].type).toBe('imageView')
+    expect(existsSync(result.data[0].items[0].path as string)).toBe(true)
+  })
+
   it('does not sanitize inline images for methods without thread turns', async () => {
     const payload = {
       thread: {

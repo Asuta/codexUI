@@ -596,6 +596,10 @@ export function normalizeThreadGroupsV2(payload: ThreadListResponse): UiProjectG
 
 export function normalizeThreadMessagesV2(payload: ThreadReadResponse): UiMessage[] {
   const turns = Array.isArray(payload.thread.turns) ? payload.thread.turns : []
+  return normalizeThreadTurnsV2(turns)
+}
+
+export function normalizeThreadTurnsV2(turns: Turn[], turnIndexOffset = 0): UiMessage[] {
   const messages: UiMessage[] = []
   for (let turnIndex = 0; turnIndex < turns.length; turnIndex++) {
     const turn = turns[turnIndex]
@@ -603,7 +607,7 @@ export function normalizeThreadMessagesV2(payload: ThreadReadResponse): UiMessag
     const items = Array.isArray(turn.items) ? turn.items : []
     for (const item of items) {
       for (const msg of toUiMessages(item)) {
-        messages.push({ ...msg, turnId, turnIndex })
+        messages.push({ ...msg, turnId, turnIndex: turnIndex + turnIndexOffset })
       }
     }
   }

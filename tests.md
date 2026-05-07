@@ -4522,6 +4522,34 @@ Opening an existing long thread reads history without resuming it, keeps all tur
 
 ---
 
+### Paged historical thread hydration
+
+#### Feature/Change Name
+Opening an existing long thread hydrates only the newest turn page first, then loads older turns on demand.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. A historical thread with more than 5 turns is available
+3. Light theme and dark theme are available from the appearance switcher
+
+#### Steps
+1. In light theme, open the historical thread from the sidebar.
+2. Confirm the first visible content appears after the newest page is loaded, without waiting for the full thread history.
+3. Scroll near the top of the conversation or click `Load earlier messages`.
+4. Confirm older messages are prepended and scroll position remains stable.
+5. Repeat steps 1 through 4 in dark theme.
+
+#### Expected Results
+- Initial open uses `thread/read` metadata plus `thread/turns/list` with a small page size.
+- Older turns load only when the user scrolls upward or clicks the load button.
+- Generated-image payloads in paged responses still render through `/codex-local-image?path=...`.
+- If `thread/turns/list` is unavailable, the thread still opens through the full `thread/read` fallback.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
 ### Hide worktree controls for non-Git folders
 
 #### Feature/Change Name

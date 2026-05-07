@@ -810,11 +810,14 @@
                 <div class="content-thread">
                   <ThreadConversation ref="threadConversationRef" :messages="filteredMessages" :is-loading="isLoadingMessages"
                     :active-thread-id="composerThreadContextId" :cwd="composerCwd"
+                    :can-load-older-messages="selectedThreadCanLoadOlderMessages"
+                    :is-loading-older-messages="selectedThreadIsLoadingOlderMessages"
                     :live-overlay="liveOverlay"
                     :pending-requests="selectedThreadServerRequests"
                     @fork-thread="onForkThreadFromMessage"
                     @rollback="onRollback"
                     @implement-plan="onImplementPlan"
+                    @load-older-messages="onLoadOlderThreadMessages"
                     @respond-server-request="onRespondServerRequest" />
                 </div>
 
@@ -1199,6 +1202,8 @@ const {
   installedSkills,
   accountRateLimitSnapshots,
   messages,
+  selectedThreadCanLoadOlderMessages,
+  selectedThreadIsLoadingOlderMessages,
   isLoadingThreads,
   isLoadingMessages,
   isSendingMessage,
@@ -1209,6 +1214,7 @@ const {
   refreshSkills,
   selectThread,
   ensureThreadMessagesLoaded,
+  loadOlderThreadMessages,
   setThreadTerminalOpen,
   toggleSelectedThreadTerminal,
   archiveThreadById,
@@ -2430,6 +2436,14 @@ function onReorderProject(payload: { projectName: string; toIndex: number }): vo
 
 function onRespondServerRequest(payload: UiServerRequestReply): void {
   void handleServerRequestResponse(payload)
+}
+
+function onLoadOlderThreadMessages(done: () => void): void {
+  loadOlderThreadMessages()
+    .catch((unknownError) => {
+      console.warn('Failed to load older thread messages', unknownError)
+    })
+    .finally(done)
 }
 
 async function handleServerRequestResponse(payload: UiServerRequestReply): Promise<void> {

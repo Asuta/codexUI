@@ -11,6 +11,8 @@ import {
   getPendingServerRequests,
   getSkillsList,
   getThreadDetail,
+  getThreadMetadata,
+  getThreadTurnPage,
   getBackgroundThreadListLimit,
   interruptThreadTurn,
   pickCodexRateLimitSnapshot,
@@ -33,6 +35,7 @@ import {
   startThreadTurn,
   type RpcNotification,
   type SkillInfo,
+  type ThreadTurnPage,
   type ThreadQueueState,
   type WorkspaceRootsState,
 } from '../api/codexGateway'
@@ -87,6 +90,7 @@ const BACKGROUND_THREAD_PAGINATION_DELAY_MS = 10_000
 const RATE_LIMIT_REFRESH_DEBOUNCE_MS = 500
 const TURN_START_FOLLOW_UP_SYNC_DELAY_MS = 3000
 const RECENT_THREAD_MESSAGE_LOAD_REUSE_MS = 2000
+const THREAD_TURN_PAGE_SIZE = 5
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const GLOBAL_SERVER_REQUEST_SCOPE = '__global__'
 const MODEL_FALLBACK_ID = 'gpt-5.4-mini'
@@ -1324,6 +1328,11 @@ export function useDesktopState() {
   const liveCommandsByThreadId = ref<Record<string, UiMessage[]>>({})
   const liveFileChangeMessagesByThreadId = ref<Record<string, UiMessage[]>>({})
   const inProgressById = ref<Record<string, boolean>>({})
+  type ThreadTurnPaginationState = {
+    olderCursor: string | null
+    isLoadingOlder: boolean
+    hasLoadedOldest: boolean
+  }
   type FileAttachment = { label: string; path: string; fsPath: string }
   type QueuedMessage = {
     id: string
@@ -1370,6 +1379,7 @@ export function useDesktopState() {
   const loadedMessagesByThreadId = ref<Record<string, boolean>>({})
   const resumedThreadById = ref<Record<string, boolean>>({})
   const turnIndexByTurnIdByThreadId = ref<Record<string, Record<string, number>>>({})
+  const turnPaginationByThreadId = ref<Record<string, ThreadTurnPaginationState>>({})
   const turnSummaryByThreadId = ref<Record<string, TurnSummaryState>>({})
   const turnActivityByThreadId = ref<Record<string, TurnActivityState>>({})
   const turnErrorByThreadId = ref<Record<string, TurnErrorState>>({})
@@ -1515,6 +1525,17 @@ export function useDesktopState() {
     const summary = turnSummaryByThreadId.value[threadId]
     if (!summary) return combined
     return insertTurnSummaryMessage(combined, summary)
+  })
+  const selectedThreadCanLoadOlderMessages = computed(() => {
+    const threadId = selectedThreadId.value
+    if (!threadId) return false
+    const pagination = turnPaginationByThreadId.value[threadId]
+    return Boolean(pagination && pagination.olderCursor !== null && pagination.hasLoadedOldest !== true)
+  })
+  const selectedThreadIsLoadingOlderMessages = computed(() => {
+    const threadId = selectedThreadId.value
+    if (!threadId) return false
+    return turnPaginationByThreadId.value[threadId]?.isLoadingOlder === true
   })
 
   function readModelIdForThread(threadId: string): string {
@@ -2061,6 +2082,7 @@ export function useDesktopState() {
     loadedVersionByThreadId.value = pruneThreadStateMap(loadedVersionByThreadId.value, activeThreadIds)
     resumedThreadById.value = pruneThreadStateMap(resumedThreadById.value, activeThreadIds)
     turnIndexByTurnIdByThreadId.value = pruneThreadStateMap(turnIndexByTurnIdByThreadId.value, activeThreadIds)
+    turnPaginationByThreadId.value = pruneThreadStateMap(turnPaginationByThreadId.value, activeThreadIds)
     persistedMessagesByThreadId.value = pruneThreadStateMap(persistedMessagesByThreadId.value, activeThreadIds)
     liveAgentMessagesByThreadId.value = pruneThreadStateMap(liveAgentMessagesByThreadId.value, activeThreadIds)
     liveReasoningTextByThreadId.value = pruneThreadStateMap(liveReasoningTextByThreadId.value, activeThreadIds)
@@ -2333,6 +2355,112 @@ export function useDesktopState() {
     persistedMessagesByThreadId.value = {
       ...persistedMessagesByThreadId.value,
       [threadId]: nextMessages,
+    }
+  }
+
+  function buildTurnIndexLookupFromMessages(messages: UiMessage[]): Record<string, number> {
+    const lookup: Record<string, number> = {}
+    for (const message of messages) {
+      if (!message.turnId || typeof message.turnIndex !== 'number') continue
+      lookup[message.turnId] = message.turnIndex
+    }
+    return lookup
+  }
+
+  function reindexPersistedMessagesByTurnOrder(messages: UiMessage[]): UiMessage[] {
+    const turnOrder: string[] = []
+    const turnIndexByTurnId = new Map<string, number>()
+    let nextTurnIndex = 0
+    let changed = false
+
+    for (const message of messages) {
+      const turnId = message.turnId
+      if (!turnId || turnIndexByTurnId.has(turnId)) continue
+      turnIndexByTurnId.set(turnId, nextTurnIndex)
+      turnOrder.push(turnId)
+      nextTurnIndex += 1
+    }
+
+    if (turnOrder.length === 0) return messages
+
+    const nextMessages = messages.map((message) => {
+      if (!message.turnId) return message
+      const turnIndex = turnIndexByTurnId.get(message.turnId)
+      if (typeof turnIndex !== 'number' || message.turnIndex === turnIndex) return message
+      changed = true
+      return { ...message, turnIndex }
+    })
+
+    return changed ? nextMessages : messages
+  }
+
+  function mergeOlderPersistedMessages(current: UiMessage[], older: UiMessage[]): UiMessage[] {
+    if (older.length === 0) return current
+    const currentIds = new Set(current.map((message) => message.id))
+    const prepended = older.filter((message) => !currentIds.has(message.id))
+    if (prepended.length === 0) return current
+    return reindexPersistedMessagesByTurnOrder([...prepended, ...current])
+  }
+
+  function setThreadTurnPagination(threadId: string, state: ThreadTurnPaginationState): void {
+    turnPaginationByThreadId.value = {
+      ...turnPaginationByThreadId.value,
+      [threadId]: state,
+    }
+  }
+
+  function clearThreadTurnPagination(threadId: string): void {
+    if (!threadId || !(threadId in turnPaginationByThreadId.value)) return
+    turnPaginationByThreadId.value = omitKey(turnPaginationByThreadId.value, threadId)
+  }
+
+  function applyLoadedThreadPage(
+    threadId: string,
+    page: ThreadTurnPage,
+    options: { appendOlder?: boolean; silent?: boolean } = {},
+  ): void {
+    const previousPersisted = persistedMessagesByThreadId.value[threadId] ?? []
+    const mergedMessages = options.appendOlder === true
+      ? mergeOlderPersistedMessages(previousPersisted, page.messages)
+      : mergeMessages(previousPersisted, page.messages, {
+        preserveMissing: true,
+      })
+    const nextMessages = reindexPersistedMessagesByTurnOrder(mergedMessages)
+
+    markThreadMessagesPersisted(threadId, nextMessages)
+    setPersistedMessagesForThread(threadId, nextMessages)
+    replaceTurnIndexLookupForThread(threadId, buildTurnIndexLookupFromMessages(nextMessages))
+    rebindLiveFileChangeTurnIndices(threadId)
+
+    if (options.appendOlder !== true) {
+      const previousLiveAgent = liveAgentMessagesByThreadId.value[threadId] ?? []
+      if (page.inProgress) {
+        const nextLiveAgent = removeRedundantLiveAgentMessages(previousLiveAgent, nextMessages)
+        setLiveAgentMessagesForThread(threadId, nextLiveAgent)
+      } else {
+        clearLiveAgentMessagesForThread(threadId)
+      }
+      removeLiveCommandsPersistedIn(threadId, nextMessages)
+      removeLiveFileChangesPersistedIn(threadId, nextMessages)
+    }
+
+    setThreadTurnPagination(threadId, {
+      olderCursor: page.nextCursor,
+      isLoadingOlder: false,
+      hasLoadedOldest: page.nextCursor === null,
+    })
+    if (options.appendOlder === true) return
+    setThreadInProgress(threadId, page.inProgress)
+    if (page.activeTurnId) {
+      activeTurnIdByThreadId.value = {
+        ...activeTurnIdByThreadId.value,
+        [threadId]: page.activeTurnId,
+      }
+    } else if (activeTurnIdByThreadId.value[threadId]) {
+      activeTurnIdByThreadId.value = omitKey(activeTurnIdByThreadId.value, threadId)
+    }
+    if (!page.inProgress) {
+      clearCompletedTurnLiveState(threadId)
     }
   }
 
@@ -4154,27 +4282,52 @@ export function useDesktopState() {
         return
       }
 
-      const detail = await getThreadDetail(threadId)
+      try {
+        const metadataPromise = getThreadMetadata(threadId).catch(() => null)
+        const [metadata, page] = await Promise.all([
+          metadataPromise,
+          getThreadTurnPage(threadId, null, THREAD_TURN_PAGE_SIZE),
+        ])
+        applyLoadedThreadPage(threadId, {
+          ...page,
+          inProgress: page.inProgress || metadata?.inProgress === true,
+          activeTurnId: page.activeTurnId || metadata?.activeTurnId || '',
+        }, { silent: options.silent })
+      } catch {
+        clearThreadTurnPagination(threadId)
+        const detail = await getThreadDetail(threadId)
+        const { messages: nextMessages, inProgress, activeTurnId, turnIndexByTurnId } = detail
+        markThreadMessagesPersisted(threadId, nextMessages)
+        replaceTurnIndexLookupForThread(threadId, turnIndexByTurnId)
+        rebindLiveFileChangeTurnIndices(threadId)
+        const previousPersisted = persistedMessagesByThreadId.value[threadId] ?? []
+        const mergedMessages = mergeMessages(previousPersisted, nextMessages, {
+          preserveMissing: options.silent === true,
+        })
+        setPersistedMessagesForThread(threadId, mergedMessages)
 
-      const { messages: nextMessages, inProgress, activeTurnId, turnIndexByTurnId } = detail
-      markThreadMessagesPersisted(threadId, nextMessages)
-      replaceTurnIndexLookupForThread(threadId, turnIndexByTurnId)
-      rebindLiveFileChangeTurnIndices(threadId)
-      const previousPersisted = persistedMessagesByThreadId.value[threadId] ?? []
-      const mergedMessages = mergeMessages(previousPersisted, nextMessages, {
-        preserveMissing: options.silent === true,
-      })
-      setPersistedMessagesForThread(threadId, mergedMessages)
-
-      const previousLiveAgent = liveAgentMessagesByThreadId.value[threadId] ?? []
-      if (inProgress) {
-        const nextLiveAgent = removeRedundantLiveAgentMessages(previousLiveAgent, nextMessages)
-        setLiveAgentMessagesForThread(threadId, nextLiveAgent)
-      } else {
-        clearLiveAgentMessagesForThread(threadId)
+        const previousLiveAgent = liveAgentMessagesByThreadId.value[threadId] ?? []
+        if (inProgress) {
+          const nextLiveAgent = removeRedundantLiveAgentMessages(previousLiveAgent, nextMessages)
+          setLiveAgentMessagesForThread(threadId, nextLiveAgent)
+        } else {
+          clearLiveAgentMessagesForThread(threadId)
+        }
+        removeLiveCommandsPersistedIn(threadId, nextMessages)
+        removeLiveFileChangesPersistedIn(threadId, nextMessages)
+        setThreadInProgress(threadId, inProgress)
+        if (activeTurnId) {
+          activeTurnIdByThreadId.value = {
+            ...activeTurnIdByThreadId.value,
+            [threadId]: activeTurnId,
+          }
+        } else if (activeTurnIdByThreadId.value[threadId]) {
+          activeTurnIdByThreadId.value = omitKey(activeTurnIdByThreadId.value, threadId)
+        }
+        if (!inProgress) {
+          clearCompletedTurnLiveState(threadId)
+        }
       }
-      removeLiveCommandsPersistedIn(threadId, nextMessages)
-      removeLiveFileChangesPersistedIn(threadId, nextMessages)
 
       loadedMessagesByThreadId.value = {
         ...loadedMessagesByThreadId.value,
@@ -4187,18 +4340,6 @@ export function useDesktopState() {
           ...loadedVersionByThreadId.value,
           [threadId]: version,
         }
-      }
-      setThreadInProgress(threadId, inProgress)
-      if (activeTurnId) {
-        activeTurnIdByThreadId.value = {
-          ...activeTurnIdByThreadId.value,
-          [threadId]: activeTurnId,
-        }
-      } else if (activeTurnIdByThreadId.value[threadId]) {
-        activeTurnIdByThreadId.value = omitKey(activeTurnIdByThreadId.value, threadId)
-      }
-      if (!inProgress) {
-        clearCompletedTurnLiveState(threadId)
       }
       markThreadAsRead(threadId)
       } finally {
@@ -4218,6 +4359,36 @@ export function useDesktopState() {
     if (!threadId) return
     if (loadedMessagesByThreadId.value[threadId] === true) return
     await loadMessages(threadId, options)
+  }
+
+  async function loadOlderThreadMessages(threadId: string = selectedThreadId.value): Promise<void> {
+    if (!threadId) return
+    const pagination = turnPaginationByThreadId.value[threadId]
+    const olderCursor = pagination?.olderCursor ?? null
+    if (!pagination || olderCursor === null || pagination.isLoadingOlder === true) return
+
+    setThreadTurnPagination(threadId, {
+      ...pagination,
+      isLoadingOlder: true,
+      hasLoadedOldest: false,
+    })
+
+    try {
+      const page = await getThreadTurnPage(threadId, olderCursor, THREAD_TURN_PAGE_SIZE)
+      if (selectedThreadId.value !== threadId && loadedMessagesByThreadId.value[threadId] !== true) return
+      applyLoadedThreadPage(threadId, page, { appendOlder: true })
+    } catch (unknownError) {
+      const current = turnPaginationByThreadId.value[threadId]
+      if (current?.olderCursor === olderCursor) {
+        setThreadTurnPagination(threadId, {
+          olderCursor,
+          isLoadingOlder: false,
+          hasLoadedOldest: false,
+        })
+      }
+      error.value = unknownError instanceof Error ? unknownError.message : 'Failed to load earlier messages'
+      throw unknownError
+    }
   }
 
   async function refreshSkills(): Promise<void> {
@@ -5235,6 +5406,7 @@ export function useDesktopState() {
     liveCommandsByThreadId.value = {}
     liveFileChangeMessagesByThreadId.value = {}
     turnIndexByTurnIdByThreadId.value = {}
+    turnPaginationByThreadId.value = {}
     turnActivityByThreadId.value = {}
     turnSummaryByThreadId.value = {}
     turnErrorByThreadId.value = {}
@@ -5323,6 +5495,8 @@ export function useDesktopState() {
     installedSkills,
     accountRateLimitSnapshots,
     messages,
+    selectedThreadCanLoadOlderMessages,
+    selectedThreadIsLoadingOlderMessages,
     isLoadingThreads,
     isLoadingMessages,
     isSendingMessage,
@@ -5335,6 +5509,7 @@ export function useDesktopState() {
     refreshSkills,
     selectThread,
     loadMessages,
+    loadOlderThreadMessages,
     ensureThreadMessagesLoaded,
     setThreadTerminalOpen,
     toggleSelectedThreadTerminal,
