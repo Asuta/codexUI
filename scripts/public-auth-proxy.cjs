@@ -7,6 +7,68 @@ const password = process.env.CODEXUI_PUBLIC_PASSWORD || ''
 const sessionSecret = process.env.CODEXUI_PUBLIC_SESSION_SECRET || crypto.randomBytes(32).toString('hex')
 const cookieName = 'codexui_public_session'
 const sessionTtlMs = 30 * 24 * 60 * 60 * 1000
+const benignSocketErrorCodes = new Set(['ECONNRESET', 'EPIPE', 'ECONNABORTED', 'ERR_STREAM_PREMATURE_CLOSE'])
+
+function isBenignSocketError(error) {
+  return error && benignSocketErrorCodes.has(error.code)
+}
+
+function logProxyError(context, error) {
+  if (isBenignSocketError(error)) {
+    console.warn(`${context}: ${error.code}`)
+    return
+  }
+  console.error(`${context}: ${error && error.stack ? error.stack : error}`)
+}
+
+function destroyQuietly(stream) {
+  if (!stream || stream.destroyed) return
+  try {
+    stream.destroy()
+  } catch {
+    // Ignore cleanup errors while handling a broken client/upstream socket.
+  }
+}
+
+function safeWriteHead(res, statusCode, headers) {
+  if (res.headersSent || res.destroyed) return false
+  try {
+    res.writeHead(statusCode, headers)
+    return true
+  } catch (error) {
+    logProxyError('response writeHead failed', error)
+    destroyQuietly(res)
+    return false
+  }
+}
+
+function safeEnd(res, body = '') {
+  if (res.destroyed || res.writableEnded) return
+  try {
+    res.end(body)
+  } catch (error) {
+    logProxyError('response end failed', error)
+    destroyQuietly(res)
+  }
+}
+
+function safeSocketWrite(socket, chunk) {
+  if (!socket || socket.destroyed || !socket.writable) return false
+  try {
+    socket.write(chunk)
+    return true
+  } catch (error) {
+    logProxyError('socket write failed', error)
+    destroyQuietly(socket)
+    return false
+  }
+}
+
+function sendPlainText(res, statusCode, body) {
+  if (safeWriteHead(res, statusCode, { 'Content-Type': 'text/plain; charset=utf-8' })) {
+    safeEnd(res, body)
+  }
+}
 
 function parseCookies(header) {
   const cookies = {}
@@ -50,8 +112,8 @@ function timingSafePasswordEquals(provided) {
 }
 
 function sendLoginPage(res, failed = false) {
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-  res.end(`<!doctype html>
+  if (!safeWriteHead(res, 200, { 'Content-Type': 'text/html; charset=utf-8' })) return
+  safeEnd(res, `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -104,12 +166,35 @@ function proxyHttp(req, res) {
     path: req.url,
     headers,
   }, (upstreamRes) => {
-    res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers)
+    upstreamRes.on('error', (error) => {
+      logProxyError('upstream response error', error)
+      destroyQuietly(res)
+    })
+    if (!safeWriteHead(res, upstreamRes.statusCode || 502, upstreamRes.headers)) {
+      destroyQuietly(upstreamRes)
+      return
+    }
     upstreamRes.pipe(res)
   })
+  req.on('aborted', () => destroyQuietly(upstream))
+  req.on('error', (error) => {
+    logProxyError('client request error', error)
+    destroyQuietly(upstream)
+  })
+  res.on('error', (error) => {
+    logProxyError('client response error', error)
+    destroyQuietly(upstream)
+  })
+  res.on('close', () => {
+    if (!res.writableEnded) destroyQuietly(upstream)
+  })
   upstream.on('error', (error) => {
-    res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
-    res.end(`CodexUI upstream unavailable: ${error.message}`)
+    logProxyError('upstream request error', error)
+    if (!res.headersSent) {
+      sendPlainText(res, 502, `CodexUI upstream unavailable: ${error.message}`)
+      return
+    }
+    destroyQuietly(res)
   })
   req.pipe(upstream)
 }
@@ -123,23 +208,43 @@ function proxyUpgrade(req, socket, head) {
     headers: { ...req.headers, host: `localhost:${targetPort}` },
   })
   upstream.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
-    socket.write(`HTTP/${upstreamRes.httpVersion} ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n`)
+    upstreamSocket.on('error', (error) => {
+      logProxyError('upstream upgrade socket error', error)
+      destroyQuietly(socket)
+    })
+    socket.on('error', (error) => {
+      logProxyError('client upgrade socket error', error)
+      destroyQuietly(upstreamSocket)
+    })
+    upstreamSocket.on('close', () => destroyQuietly(socket))
+    socket.on('close', () => destroyQuietly(upstreamSocket))
+
+    if (!safeSocketWrite(socket, `HTTP/${upstreamRes.httpVersion} ${upstreamRes.statusCode} ${upstreamRes.statusMessage}\r\n`)) {
+      destroyQuietly(upstreamSocket)
+      return
+    }
     for (const [key, value] of Object.entries(upstreamRes.headers)) {
       if (Array.isArray(value)) {
-        for (const item of value) socket.write(`${key}: ${item}\r\n`)
+        for (const item of value) safeSocketWrite(socket, `${key}: ${item}\r\n`)
       } else if (value !== undefined) {
-        socket.write(`${key}: ${value}\r\n`)
+        safeSocketWrite(socket, `${key}: ${value}\r\n`)
       }
     }
-    socket.write('\r\n')
-    if (upstreamHead.length) socket.write(upstreamHead)
-    if (head.length) upstreamSocket.write(head)
+    safeSocketWrite(socket, '\r\n')
+    if (upstreamHead.length) safeSocketWrite(socket, upstreamHead)
+    if (head.length) safeSocketWrite(upstreamSocket, head)
     upstreamSocket.pipe(socket)
     socket.pipe(upstreamSocket)
   })
-  upstream.on('error', () => {
-    socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n')
-    socket.destroy()
+  socket.on('error', (error) => {
+    logProxyError('client upgrade socket error', error)
+    destroyQuietly(upstream)
+  })
+  socket.on('close', () => destroyQuietly(upstream))
+  upstream.on('error', (error) => {
+    logProxyError('upstream upgrade request error', error)
+    safeSocketWrite(socket, 'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n')
+    destroyQuietly(socket)
   })
   upstream.end()
 }
@@ -160,14 +265,14 @@ const server = http.createServer(async (req, res) => {
         return
       }
       const cookie = createSessionCookie()
-      res.writeHead(302, {
+      if (!safeWriteHead(res, 302, {
         Location: '/',
         'Set-Cookie': `${cookieName}=${encodeURIComponent(cookie)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(sessionTtlMs / 1000)}`,
-      })
-      res.end()
-    } catch {
-      res.writeHead(400)
-      res.end()
+      })) return
+      safeEnd(res)
+    } catch (error) {
+      logProxyError('login request error', error)
+      sendPlainText(res, 400, '')
     }
     return
   }
@@ -187,6 +292,12 @@ server.on('upgrade', (req, socket, head) => {
   }
   socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
   socket.destroy()
+})
+
+server.on('clientError', (error, socket) => {
+  logProxyError('server client error', error)
+  safeSocketWrite(socket, 'HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n')
+  destroyQuietly(socket)
 })
 
 server.listen(listenPort, '127.0.0.1', () => {
