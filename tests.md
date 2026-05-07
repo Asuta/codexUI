@@ -4571,6 +4571,7 @@ Local image paths embedded in Markdown render correctly through local access and
 #### Expected Results
 - Local image URLs use tunnel-safe `/codex-local-image?p=...` encoding while keeping legacy `/codex-local-image?path=...` support.
 - The `/codex-local-image` route decodes `p` back into the original absolute path and serves the image file.
+- Vite dev-server image middleware and live `imageView` notifications also use the same tunnel-safe local image URL format.
 - Markdown image buttons shrink to the displayed image instead of filling the available message width.
 - Failed image rendering no longer occurs solely because a tunnel/proxy rejects raw Windows path query strings.
 

@@ -34,6 +34,18 @@ function normalizeLocalImagePath(rawPath: string): string {
   return trimmed;
 }
 
+function decodeCodexLocalImagePathQuery(searchParams: URLSearchParams): string {
+  const encodedPath = searchParams.get("p")?.trim() ?? "";
+  if (encodedPath) {
+    try {
+      return Buffer.from(encodedPath, "base64url").toString("utf8");
+    } catch {
+      return "";
+    }
+  }
+  return searchParams.get("path") ?? "";
+}
+
 function getWorktreeName(): string {
   const normalizedCwd = process.cwd().replace(/\\/g, "/");
   const segments = normalizedCwd.split("/").filter(Boolean);
@@ -180,7 +192,7 @@ export default defineConfig({
           const url = new URL(req.url, "http://localhost");
           if (url.pathname !== "/codex-local-image") return next();
 
-          const localPath = normalizeLocalImagePath(url.searchParams.get("path") ?? "");
+          const localPath = normalizeLocalImagePath(decodeCodexLocalImagePathQuery(url.searchParams));
           if (!localPath || !isAbsolute(localPath)) {
             res.statusCode = 400;
             res.setHeader("Content-Type", "application/json");

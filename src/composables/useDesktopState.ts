@@ -3427,8 +3427,24 @@ export function useDesktopState() {
     return null
   }
 
+  function encodeBase64Url(value: string): string {
+    try {
+      const bytes = new TextEncoder().encode(value)
+      let binary = ''
+      for (const byte of bytes) {
+        binary += String.fromCharCode(byte)
+      }
+      return btoa(binary).replace(/\+/gu, '-').replace(/\//gu, '_').replace(/=+$/u, '')
+    } catch {
+      return ''
+    }
+  }
+
   function toLocalImageUrl(path: string): string {
-    return `/codex-local-image?path=${encodeURIComponent(path)}`
+    const encodedPath = encodeBase64Url(path)
+    return encodedPath
+      ? `/codex-local-image?p=${encodedPath}`
+      : `/codex-local-image?path=${encodeURIComponent(path)}`
   }
 
   function toImageGenerationUrl(value: string): string {
