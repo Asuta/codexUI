@@ -4069,6 +4069,40 @@ The sidebar labels the grouped thread area as `Projects`, makes `Projects`, `Pin
 
 ---
 
+### Expandable Chats list preview
+
+#### Feature/Change Name
+The `Chats` sidebar section previews the latest 10 projectless chats and can expand to show the full loaded chat list.
+
+#### Prerequisites/Setup
+1. Dev server running at `http://127.0.0.1:5174` or the active Vite dev URL
+2. At least 11 projectless chats exist in the `Chats` section
+3. Light theme and dark theme are available from the appearance switcher
+
+#### Steps
+1. In light theme, open the sidebar and expand `Chats`
+2. Confirm exactly 10 chat rows are shown before expansion
+3. Confirm a `Show more` row appears under the 10 visible chats
+4. Click `Show more` and confirm all loaded projectless chats are visible
+5. Confirm the button text changes to `Show less`
+6. Click `Show less` and confirm the list returns to 10 visible chats
+7. Switch `Sort by` between `Created` and `Updated`, then repeat steps 2 through 6
+8. Open sidebar search, enter a query matching older projectless chats, and confirm matching chats are not capped at 10 while search is active
+9. Switch to dark theme and repeat steps 1 through 6
+
+#### Expected Results
+- `Chats` defaults to the latest 10 projectless chats instead of 4
+- `Show more` expands the section to every loaded projectless chat
+- `Show less` restores the 10-chat preview
+- Existing `Created` and `Updated` sorting still controls chat order
+- Search results remain uncapped and readable in light theme and dark theme
+
+#### Rollback/Cleanup
+- Clear the sidebar search query if the search step left it open
+- Delete any disposable projectless chats created only for this validation
+
+---
+
 ### Thread menu copy path action
 
 #### Feature/Change Name

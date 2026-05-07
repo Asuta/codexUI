@@ -495,10 +495,10 @@
         </template>
       </SidebarMenuRow>
 
-      <p v-if="isChatsSectionExpanded && chatThreads.length === 0" class="thread-tree-no-results">{{ t('No chats') }}</p>
+      <p v-if="isChatsSectionExpanded && allChatThreads.length === 0" class="thread-tree-no-results">{{ t('No chats') }}</p>
       <ul v-else-if="isChatsSectionExpanded" class="thread-list thread-list-global">
         <li
-          v-for="thread in chatThreads"
+          v-for="thread in visibleChatThreads"
           :key="thread.id"
           class="thread-row-item"
           :data-menu-open="isThreadMenuOpen(thread.id) ? 'true' : 'false'"
@@ -572,6 +572,15 @@
           </SidebarMenuRow>
         </li>
       </ul>
+
+      <SidebarMenuRow v-if="isChatsSectionExpanded && hasHiddenChatThreads" class="thread-show-more-row">
+        <template #left>
+          <span class="thread-show-more-spacer" />
+        </template>
+        <button class="thread-show-more-button" type="button" @click="toggleChatListExpansion">
+          {{ isChatListExpanded ? 'Show less' : 'Show more' }}
+        </button>
+      </SidebarMenuRow>
     </section>
 
     <Teleport to="body">
@@ -801,6 +810,7 @@ type ChatSortMode = 'created' | 'updated'
 
 const DRAG_START_THRESHOLD_PX = 4
 const PROJECT_GROUP_EXPANDED_GAP_PX = 6
+const CHAT_PREVIEW_LIMIT = 10
 const SECTION_EXPANSION_STORAGE_KEY = 'codex-web-local.sidebar-section-expansion.v1'
 const CHATS_FIRST_STORAGE_KEY = 'codex-web-local.sidebar-chats-first.v1'
 const CHAT_SORT_MODE_STORAGE_KEY = 'codex-web-local.sidebar-chat-sort-mode.v1'
@@ -809,6 +819,7 @@ const collapsedProjects = ref<Record<string, boolean>>({})
 const isPinnedSectionExpanded = ref(true)
 const isProjectsSectionExpanded = ref(true)
 const isChatsSectionExpanded = ref(true)
+const isChatListExpanded = ref(false)
 const showChatsFirst = ref(loadBooleanStorage(CHATS_FIRST_STORAGE_KEY, false))
 const chatSortMode = ref<ChatSortMode>(loadChatSortMode())
 let hasLoadedPinnedThreadState = false
@@ -1016,7 +1027,7 @@ const globalThreads = computed<UiThread[]>(() => {
   })
 })
 
-const chatThreads = computed(() => {
+const allChatThreads = computed(() => {
   const rows = globalThreads.value.filter((thread) => isProjectlessChatPath(thread.cwd))
   const timestampKey = chatSortMode.value === 'created' ? 'createdAtIso' : 'updatedAtIso'
   return rows
@@ -1025,7 +1036,16 @@ const chatThreads = computed(() => {
       const secondTimestamp = new Date(second[timestampKey] || second.updatedAtIso || second.createdAtIso).getTime()
       return secondTimestamp - firstTimestamp
     })
-    .slice(0, 4)
+})
+
+const visibleChatThreads = computed(() => {
+  if (isSearchActive.value || isChatListExpanded.value) return allChatThreads.value
+  return allChatThreads.value.slice(0, CHAT_PREVIEW_LIMIT)
+})
+
+const hasHiddenChatThreads = computed(() => {
+  if (isSearchActive.value) return false
+  return allChatThreads.value.length > CHAT_PREVIEW_LIMIT
 })
 
 const threadById = computed(() => {
@@ -1127,6 +1147,10 @@ function toggleProjectsSection(): void {
 
 function toggleChatsSection(): void {
   isChatsSectionExpanded.value = !isChatsSectionExpanded.value
+}
+
+function toggleChatListExpansion(): void {
+  isChatListExpanded.value = !isChatListExpanded.value
 }
 
 const projectedDropProjectIndex = computed<number | null>(() => {
