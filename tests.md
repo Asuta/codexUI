@@ -4493,6 +4493,35 @@ Opening a thread always scrolls the conversation to the latest messages, with no
 
 ---
 
+### Fast historical thread opening with image payloads
+
+#### Feature/Change Name
+Opening an existing long thread reads history without resuming it, keeps all turns, and externalizes inline generated images before sending data to the browser.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. A historical thread with more than 10 turns and generated-image results is available
+3. Light theme and dark theme are available from the appearance switcher
+
+#### Steps
+1. In light theme, open the historical thread from the sidebar.
+2. Confirm older turns before the latest 10 turns are still available via the conversation's older-message loader.
+3. Confirm generated images render through `/codex-local-image?path=...`, not giant `data:image/...` URLs.
+4. Send a new message in the opened thread and confirm the turn starts normally after the thread is resumed for sending.
+5. Switch to dark theme and repeat steps 1 through 3.
+
+#### Expected Results
+- Opening a historical thread does not trigger an eager `thread/resume` call.
+- The server response keeps all thread turns instead of trimming to the latest 10.
+- Inline generated-image base64 is written to local temp files and represented as lightweight `/codex-local-image` URLs.
+- Sending a follow-up message still resumes the thread before `turn/start`.
+- Behavior is the same in light theme and dark theme.
+
+#### Rollback/Cleanup
+- Temporary extracted media files may be removed from the OS temp directory under `codex-web-inline-media`.
+
+---
+
 ### Hide worktree controls for non-Git folders
 
 #### Feature/Change Name

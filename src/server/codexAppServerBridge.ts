@@ -211,7 +211,6 @@ const COMPOSIO_CONNECTORS_PAGE_LIMIT_MAX = 1000
 
 const PROVIDER_MODELS_FETCH_TIMEOUT_MS = 5_000
 
-const THREAD_RESPONSE_TURN_LIMIT = 10
 const THREAD_METHODS_WITH_TURNS = new Set(['thread/read', 'thread/resume', 'thread/fork', 'thread/rollback'])
 const THREAD_SEARCH_FULL_TEXT_THREAD_LIMIT = 100
 const PROJECTLESS_THREAD_DIRECTORY_MAX_ATTEMPTS = 100
@@ -682,23 +681,6 @@ export async function sanitizeThreadTurnsInlinePayloads(method: string, result: 
     thread: {
       ...thread,
       turns: nextTurns,
-    },
-  }
-}
-
-function trimThreadTurnsInRpcResult(method: string, result: unknown): unknown {
-  if (!THREAD_METHODS_WITH_TURNS.has(method)) return result
-
-  const record = asRecord(result)
-  const thread = asRecord(record?.thread)
-  const turns = Array.isArray(thread?.turns) ? thread.turns : null
-  if (!record || !thread || !turns || turns.length <= THREAD_RESPONSE_TURN_LIMIT) return result
-
-  return {
-    ...record,
-    thread: {
-      ...thread,
-      turns: turns.slice(-THREAD_RESPONSE_TURN_LIMIT),
     },
   }
 }
@@ -5277,8 +5259,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
         }
 
         const rpcResult = await appServer.rpc(body.method, body.params ?? null)
-        const trimmedResult = trimThreadTurnsInRpcResult(body.method, rpcResult)
-        const result = await sanitizeThreadTurnsInlinePayloads(body.method, trimmedResult)
+        const result = await sanitizeThreadTurnsInlinePayloads(body.method, rpcResult)
 
         if (THREAD_METHODS_WITH_TURNS.has(body.method)) {
           const rpcRecord = asRecord(result)

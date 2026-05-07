@@ -3307,16 +3307,16 @@ export function useDesktopState() {
     const trimmed = value.trim()
     if (!trimmed) return ''
     if (
-      trimmed.startsWith('data:') ||
       trimmed.startsWith('http://') ||
       trimmed.startsWith('https://') ||
       trimmed.startsWith('/codex-local-image?')
     ) {
       return trimmed
     }
+    if (trimmed.startsWith('data:')) return ''
     const compact = trimmed.replace(/\s+/gu, '')
     if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(compact)) return ''
-    return `data:image/png;base64,${compact}`
+    return ''
   }
 
   function readCompletedImageView(notification: RpcNotification): UiMessage | null {
@@ -4154,17 +4154,7 @@ export function useDesktopState() {
         return
       }
 
-      const needsResume = resumedThreadById.value[threadId] !== true
-      const resumedThread = needsResume ? await resumeThread(threadId) : null
-      const detail = resumedThread ?? await getThreadDetail(threadId)
-
-      if (resumedThread) {
-        setThreadModelId(threadId, resumedThread.model)
-        resumedThreadById.value = {
-          ...resumedThreadById.value,
-          [threadId]: true,
-        }
-      }
+      const detail = await getThreadDetail(threadId)
 
       const { messages: nextMessages, inProgress, activeTurnId, turnIndexByTurnId } = detail
       markThreadMessagesPersisted(threadId, nextMessages)

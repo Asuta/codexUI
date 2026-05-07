@@ -76,16 +76,16 @@ function toImageGenerationUrl(value: string): string {
   const trimmed = value.trim()
   if (!trimmed) return ''
   if (
-    trimmed.startsWith('data:') ||
     trimmed.startsWith('http://') ||
     trimmed.startsWith('https://') ||
     trimmed.startsWith('/codex-local-image?')
   ) {
     return trimmed
   }
+  if (trimmed.startsWith('data:')) return ''
   const compact = trimmed.replace(/\s+/gu, '')
   if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(compact)) return ''
-  return `data:image/png;base64,${compact}`
+  return ''
 }
 
 function readHeartbeatField(value: string, field: string): string {
