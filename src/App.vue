@@ -66,7 +66,6 @@
             :selected-thread-id="selectedThreadId" :is-loading="isLoadingThreads"
             :search-query="sidebarSearchQuery"
             :search-matched-thread-ids="serverMatchedThreadIds"
-            :filter-active="isSidebarSearchVisible"
             @select="onSelectThread"
             @archive="onArchiveThread" @start-new-thread="onStartNewThread" @rename-project="onRenameProject"
             @browse-thread-files="onBrowseThreadFiles"
@@ -76,8 +75,7 @@
             @fork-thread="onForkThread"
             @remove-project="onRemoveProject" @reorder-project="onReorderProject"
             @export-thread="onExportThread"
-            @start-new-chat="onStartNewThreadFromToolbar"
-            @toggle-filter="toggleSidebarSearch" />
+            @start-new-chat="onStartNewThreadFromToolbar" />
         </div>
 
         <div
