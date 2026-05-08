@@ -70,6 +70,7 @@
             @archive="onArchiveThread" @start-new-thread="onStartNewThread" @rename-project="onRenameProject"
             @browse-thread-files="onBrowseThreadFiles"
             @browse-project-files="onBrowseProjectFiles"
+            @request-project-git-status="onRequestProjectGitStatus"
             @create-project-worktree="onCreateProjectWorktree"
             @rename-thread="onRenameThread"
             @fork-thread="onForkThread"
@@ -1264,6 +1265,7 @@ const hasInitialized = ref(false)
 const newThreadCwd = ref('')
 const newThreadRuntime = ref<'local' | 'worktree'>('local')
 const gitRepoStatusByCwd = ref<Record<string, boolean>>({})
+const gitRepoStatusRequestByCwd = new Map<string, Promise<boolean>>()
 const newWorktreeBaseBranch = ref('')
 const worktreeBranchOptions = ref<WorktreeBranchOption[]>([])
 const isLoadingWorktreeBranches = ref(false)
@@ -2395,17 +2397,32 @@ function onStartNewThreadFromToolbar(): void {
 async function loadGitRepoStatus(cwdRaw: string): Promise<void> {
   const cwd = cwdRaw.trim()
   if (!cwd || Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) return
-  try {
-    const status = await getGitRepositoryStatus(cwd)
-    gitRepoStatusByCwd.value = {
-      ...gitRepoStatusByCwd.value,
-      [cwd]: status.isGitRepo,
+
+  const existingRequest = gitRepoStatusRequestByCwd.get(cwd)
+  if (existingRequest) {
+    const isGitRepo = await existingRequest
+    if (!Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) {
+      gitRepoStatusByCwd.value = {
+        ...gitRepoStatusByCwd.value,
+        [cwd]: isGitRepo,
+      }
     }
-  } catch {
-    gitRepoStatusByCwd.value = {
-      ...gitRepoStatusByCwd.value,
-      [cwd]: false,
-    }
+    return
+  }
+
+  const request = getGitRepositoryStatus(cwd)
+    .then((status) => status.isGitRepo)
+    .catch(() => false)
+    .finally(() => {
+      gitRepoStatusRequestByCwd.delete(cwd)
+    })
+  gitRepoStatusRequestByCwd.set(cwd, request)
+
+  const isGitRepo = await request
+  if (Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) return
+  gitRepoStatusByCwd.value = {
+    ...gitRepoStatusByCwd.value,
+    [cwd]: isGitRepo,
   }
 }
 
@@ -2425,6 +2442,12 @@ async function onRemoveProject(projectName: string): Promise<void> {
 
 function onReorderProject(payload: { projectName: string; toIndex: number }): void {
   reorderProject(payload.projectName, payload.toIndex)
+}
+
+function onRequestProjectGitStatus(projectName: string): void {
+  const group = projectGroups.value.find((entry) => entry.projectName === projectName)
+  const cwd = resolvePreferredLocalCwd(projectName, group?.threads[0]?.cwd?.trim() ?? '')
+  void loadGitRepoStatus(cwd)
 }
 
 function onRespondServerRequest(payload: UiServerRequestReply): void {
@@ -3975,16 +3998,6 @@ watch(
   () => newThreadCwd.value,
   (cwd) => {
     void loadGitRepoStatus(cwd)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => projectGroups.value.map((group) => resolvePreferredLocalCwd(group.projectName, group.threads[0]?.cwd?.trim() ?? '')).filter(Boolean),
-  (cwds) => {
-    for (const cwd of cwds) {
-      void loadGitRepoStatus(cwd)
-    }
   },
   { immediate: true },
 )
