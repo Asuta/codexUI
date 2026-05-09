@@ -114,6 +114,10 @@ function getSkillsInstallDir(): string {
   return join(getCodexHomeDir(), 'skills')
 }
 
+function getSharedSkillsInstallDir(): string {
+  return join(getSkillsInstallDir(), 'shared_skills')
+}
+
 const DEFAULT_COMMAND_TIMEOUT_MS = 120_000
 const SKILL_SEARCH_METADATA_LIMIT = 20
 const SKILL_SEARCH_METADATA_CONCURRENCY = 4
@@ -864,8 +868,12 @@ function toGitHubTokenRemote(repoOwner: string, repoName: string, token: string)
   return `https://x-access-token:${encodeURIComponent(token)}@github.com/${repoOwner}/${repoName}.git`
 }
 
-async function ensureSkillsWorkingTreeRepo(repoUrl: string, branch: string): Promise<string> {
-  const localDir = getSkillsInstallDir()
+async function ensureSkillsWorkingTreeRepo(
+  repoUrl: string,
+  branch: string,
+  options: { localDir?: string; overwriteLocalFiles?: boolean } = {},
+): Promise<string> {
+  const localDir = options.localDir ?? getSkillsInstallDir()
   await mkdir(localDir, { recursive: true })
   const gitDir = join(localDir, '.git')
   let hasGitDir = false
@@ -882,6 +890,14 @@ async function ensureSkillsWorkingTreeRepo(repoUrl: string, branch: string): Pro
       await runCommand('git', ['remote', 'set-url', 'origin', repoUrl], { cwd: localDir })
     }
     await runGitFetchWithRefLockRetry(localDir)
+    if (options.overwriteLocalFiles) {
+      await runCommand('git', ['reset', '--hard'], { cwd: localDir })
+      await runCommand('git', ['clean', '-fd'], { cwd: localDir })
+      await runCommand('git', ['checkout', '-B', branch, `origin/${branch}`], { cwd: localDir })
+      await runCommand('git', ['reset', '--hard', `origin/${branch}`], { cwd: localDir })
+      await runCommand('git', ['clean', '-fd'], { cwd: localDir })
+      return localDir
+    }
     try {
       await runCommand('git', ['merge', '--allow-unrelated-histories', '--no-edit', `origin/${branch}`], { cwd: localDir })
     } catch {}
@@ -890,6 +906,14 @@ async function ensureSkillsWorkingTreeRepo(repoUrl: string, branch: string): Pro
 
   await runCommand('git', ['remote', 'set-url', 'origin', repoUrl], { cwd: localDir })
   await runGitFetchWithRefLockRetry(localDir)
+  if (options.overwriteLocalFiles) {
+    try { await runCommand('git', ['reset', '--hard'], { cwd: localDir }) } catch {}
+    await runCommand('git', ['clean', '-fd'], { cwd: localDir })
+    await runCommand('git', ['checkout', '-B', branch, `origin/${branch}`], { cwd: localDir })
+    await runCommand('git', ['reset', '--hard', `origin/${branch}`], { cwd: localDir })
+    await runCommand('git', ['clean', '-fd'], { cwd: localDir })
+    return localDir
+  }
   const hasLocalChangesBeforeSync = await hasLocalUncommittedChanges(localDir)
   const localMtimesBeforeSync = hasLocalChangesBeforeSync ? await snapshotFileMtimes(localDir) : new Map<string, number>()
   await resolveMergeConflictsByNewerCommit(localDir, branch, localMtimesBeforeSync)
@@ -1188,14 +1212,21 @@ async function syncInstalledSkillsFolderToRepo(
 
 async function pullInstalledSkillsFolderFromRepo(token: string, repoOwner: string, repoName: string): Promise<void> {
   const remoteUrl = toGitHubTokenRemote(repoOwner, repoName, token)
-  const branch = PRIVATE_SYNC_BRANCH
-  await ensureSkillsWorkingTreeRepo(remoteUrl, branch)
+  const isUpstream = isUpstreamSkillsRepo(repoOwner, repoName)
+  const branch = isUpstream ? getPreferredPublicUpstreamBranch() : PRIVATE_SYNC_BRANCH
+  await ensureSkillsWorkingTreeRepo(remoteUrl, branch, {
+    ...(isUpstream ? { localDir: getSharedSkillsInstallDir() } : {}),
+    overwriteLocalFiles: isUpstream,
+  })
 }
 
 async function bootstrapSkillsFromUpstreamIntoLocal(): Promise<void> {
   const repoUrl = `https://github.com/${SYNC_UPSTREAM_SKILLS_OWNER}/${SYNC_UPSTREAM_SKILLS_REPO}.git`
   const branch = getPreferredPublicUpstreamBranch()
-  await ensureSkillsWorkingTreeRepo(repoUrl, branch)
+  await ensureSkillsWorkingTreeRepo(repoUrl, branch, {
+    localDir: getSharedSkillsInstallDir(),
+    overwriteLocalFiles: true,
+  })
 }
 
 async function collectLocalSyncedSkills(appServer: AppServerLike): Promise<SyncedSkill[]> {
