@@ -25,6 +25,7 @@ import {
   createDefaultOpenCodeZenFreeModeState,
   getFreeModeConfigArgs,
   getFreeModeEnvVars,
+  shouldCreateDefaultFreeModeStateForMissingAuth,
   type FreeModeState,
 } from './freeMode.js'
 import { handleOpenRouterProxyRequest } from './openRouterProxy.js'
@@ -3130,14 +3131,23 @@ function readFreeModeStateSync(statePath: string): FreeModeState | null {
 
 function ensureDefaultFreeModeStateForMissingAuthSync(statePath: string): FreeModeState | null {
   const current = readFreeModeStateSync(statePath)
-  if (current?.enabled) return current
-  if (hasUsableCodexAuthSync()) return current
+  if (!shouldCreateDefaultFreeModeStateForMissingAuth(current, hasUsableCodexAuthSync())) {
+    return current
+  }
 
   const fallback = createDefaultOpenCodeZenFreeModeState()
 
   mkdirSync(dirname(statePath), { recursive: true })
   writeFileSync(statePath, JSON.stringify(fallback), { encoding: 'utf8', mode: 0o600 })
   return fallback
+}
+
+function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
+  if (!remoteAddress) return false
+  const normalized = remoteAddress.startsWith('::ffff:')
+    ? remoteAddress.slice('::ffff:'.length)
+    : remoteAddress
+  return normalized === '127.0.0.1' || normalized === '::1'
 }
 
 function getCodexGlobalStatePath(): string {
@@ -5310,6 +5320,10 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
       const url = new URL(req.url, 'http://localhost')
 
       if (url.pathname === '/codex-api/zen-proxy/v1/responses' && req.method === 'POST') {
+        if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+          setJson(res, 403, { error: 'Zen proxy is only available from localhost' })
+          return
+        }
         const statePath = join(getCodexHomeDir(), FREE_MODE_STATE_FILE)
         let bearerToken = ''
         let wireApi: 'responses' | 'chat' = 'chat'
