@@ -1550,6 +1550,21 @@ export async function handleSkillsRoutes(
         setJson(res, 200, { ok: true, data: { synced: 0, source: 'upstream' } })
         return true
       }
+      if (isUpstreamSkillsRepo(state.repoOwner, state.repoName)) {
+        await pullInstalledSkillsFolderFromRepo(state.githubToken, state.repoOwner, state.repoName)
+        const localSkills = await scanInstalledSkillsFromDisk()
+        const pulledHead = await runCommandWithOutput('git', ['rev-parse', 'HEAD'], { cwd: getSharedSkillsInstallDir() }).catch(() => '')
+        await writeSkillsSyncState({
+          ...state,
+          lastPullCommitSha: pulledHead.trim(),
+          lastSyncAttemptCount: 1,
+          lastSyncError: '',
+          lastSyncAtIso: new Date().toISOString(),
+        })
+        try { await appServer.rpc('skills/list', { forceReload: true }) } catch {}
+        setJson(res, 200, { ok: true, data: { synced: localSkills.size, source: 'upstream' } })
+        return true
+      }
       const remote = await readRemoteSkillsManifest(state.githubToken, state.repoOwner, state.repoName)
       const localDir = await detectUserSkillsDir(appServer)
       await pullInstalledSkillsFolderFromRepo(state.githubToken, state.repoOwner, state.repoName)
