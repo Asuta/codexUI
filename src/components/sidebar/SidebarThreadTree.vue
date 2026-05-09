@@ -2109,10 +2109,12 @@ function getThreadMenuDirection(threadId: string): MenuDirection {
 function updateProjectMenuDirection(projectName: string): void {
   const menuWrapElement = projectMenuWrapElementByName.get(projectName)
   if (!menuWrapElement) return
+  const menuPanelElement = menuWrapElement.querySelector<HTMLElement>('.project-menu-panel')
+  const panelHeight = menuPanelElement?.getBoundingClientRect().height ?? 0
 
   projectMenuDirectionById.value = {
     ...projectMenuDirectionById.value,
-    [projectName]: resolveMenuDirection(menuWrapElement, 176),
+    [projectName]: resolveMenuDirection(menuWrapElement, panelHeight),
   }
 }
 
@@ -2296,6 +2298,7 @@ function setProjectGroupRef(projectName: string, element: Element | ComponentPub
 
 function onProjectHandleMouseDown(event: MouseEvent, projectName: string): void {
   if (event.button !== 0) return
+  if (isSearchActive.value) return
   if (pendingProjectDrag.value || activeProjectDrag.value) return
 
   const fromIndex = props.groups.findIndex((group) => group.projectName === projectName)
@@ -2360,7 +2363,7 @@ function onProjectDragMouseUp(event: MouseEvent): void {
     }
   }
 
-  resetProjectDragState()
+  resetProjectDragState({ preserveToggleSuppression: Boolean(drag) })
 }
 
 function onProjectDragKeyDown(event: KeyboardEvent): void {
@@ -2371,7 +2374,7 @@ function onProjectDragKeyDown(event: KeyboardEvent): void {
   resetProjectDragState()
 }
 
-function resetProjectDragState(): void {
+function resetProjectDragState(options: { preserveToggleSuppression?: boolean } = {}): void {
   if (dragPointerRafId !== null) {
     window.cancelAnimationFrame(dragPointerRafId)
     dragPointerRafId = null
@@ -2379,7 +2382,9 @@ function resetProjectDragState(): void {
   pendingDragPointerSample = null
   pendingProjectDrag.value = null
   activeProjectDrag.value = null
-  suppressNextProjectToggleId.value = ''
+  if (!options.preserveToggleSuppression) {
+    suppressNextProjectToggleId.value = ''
+  }
   unbindProjectDragListeners()
 }
 
