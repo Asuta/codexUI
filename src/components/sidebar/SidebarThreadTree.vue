@@ -729,6 +729,7 @@ import {
   deleteThreadAutomation,
   getPinnedThreadState,
   getThreadAutomationMap,
+  getThreadSummary,
   persistPinnedThreadIds,
   upsertThreadAutomation,
 } from '../../api/codexGateway'
@@ -745,6 +746,7 @@ import IconTablerTrash from '../icons/IconTablerTrash.vue'
 import { useUiLanguage } from '../../composables/useUiLanguage'
 import { getPathLeafName, getPathParent, isProjectlessChatPath } from '../../pathUtils.js'
 import SidebarMenuRow from './SidebarMenuRow.vue'
+import { reconcilePinnedThreadIds } from './pinnedThreadUtils'
 
 const props = defineProps<{
   groups: UiProjectGroup[]
@@ -752,6 +754,7 @@ const props = defineProps<{
   projectGitRepoByName: Record<string, boolean>
   selectedThreadId: string
   isLoading: boolean
+  isThreadListFullyLoaded: boolean
   searchQuery: string
   searchMatchedThreadIds: string[] | null
   filterActive: boolean
@@ -825,6 +828,7 @@ const showChatsFirst = ref(loadBooleanStorage(CHATS_FIRST_STORAGE_KEY, false))
 const chatSortMode = ref<ChatSortMode>(loadChatSortMode())
 let hasLoadedPinnedThreadState = false
 const pinnedThreadIds = ref<string[]>([])
+const hydratedPinnedThreadById = ref<Record<string, UiThread>>({})
 const inlineDeleteConfirmThreadId = ref('')
 const optimisticallyArchivedThreadIds = ref<string[]>([])
 const openProjectMenuId = ref('')
@@ -1071,9 +1075,42 @@ watch(
 )
 
 watch(threadById, (threadsById) => {
-  const filtered = pinnedThreadIds.value.filter((threadId) => threadsById.has(threadId))
+  const filtered = reconcilePinnedThreadIds(pinnedThreadIds.value, new Set(threadsById.keys()), {
+    canPruneMissing: props.isThreadListFullyLoaded,
+  })
   if (filtered.length === pinnedThreadIds.value.length) return
   pinnedThreadIds.value = filtered
+})
+
+let pinnedThreadHydrationVersion = 0
+
+async function hydrateMissingPinnedThreads(): Promise<void> {
+  if (props.isLoading) return
+  const missingThreadIds = pinnedThreadIds.value.filter((threadId) => !threadById.value.has(threadId) && !hydratedPinnedThreadById.value[threadId])
+  if (missingThreadIds.length === 0) return
+
+  const version = (pinnedThreadHydrationVersion += 1)
+  const loadedThreads = await Promise.all(
+    missingThreadIds.map(async (threadId) => {
+      try {
+        return await getThreadSummary(threadId)
+      } catch {
+        return null
+      }
+    }),
+  )
+  if (version !== pinnedThreadHydrationVersion) return
+
+  const next = { ...hydratedPinnedThreadById.value }
+  for (const thread of loadedThreads) {
+    if (thread) next[thread.id] = thread
+  }
+  hydratedPinnedThreadById.value = next
+}
+
+watch([pinnedThreadIds, threadById, () => props.isLoading], () => {
+  if (!hasLoadedPinnedThreadState) return
+  void hydrateMissingPinnedThreads()
 })
 
 onMounted(async () => {
@@ -1133,7 +1170,7 @@ const openThreadMenuThread = computed(() => {
 
 const pinnedThreads = computed(() =>
   pinnedThreadIds.value
-    .map((threadId) => threadById.value.get(threadId) ?? null)
+    .map((threadId) => threadById.value.get(threadId) ?? hydratedPinnedThreadById.value[threadId] ?? null)
     .filter((thread): thread is UiThread => thread !== null)
     .filter(threadMatchesSearch),
 )
