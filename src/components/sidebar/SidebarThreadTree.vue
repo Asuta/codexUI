@@ -1074,11 +1074,16 @@ watch(
   },
 )
 
-watch(threadById, (threadsById) => {
+watch([threadById, () => props.isThreadListFullyLoaded], ([threadsById]) => {
   const filtered = reconcilePinnedThreadIds(pinnedThreadIds.value, new Set(threadsById.keys()), {
     canPruneMissing: props.isThreadListFullyLoaded,
   })
   if (filtered.length === pinnedThreadIds.value.length) return
+  const filteredIdSet = new Set(filtered)
+  const nextHydratedPinnedThreads = Object.fromEntries(
+    Object.entries(hydratedPinnedThreadById.value).filter(([threadId]) => filteredIdSet.has(threadId)),
+  )
+  hydratedPinnedThreadById.value = nextHydratedPinnedThreads
   pinnedThreadIds.value = filtered
 })
 
@@ -1131,6 +1136,7 @@ onMounted(async () => {
     automationByThreadId.value = {}
   }
   hasLoadedPinnedThreadState = true
+  void hydrateMissingPinnedThreads()
 })
 
 const deleteThreadHasAutomation = computed(() => threadHasAutomation(deleteThreadDialogThreadId.value))
