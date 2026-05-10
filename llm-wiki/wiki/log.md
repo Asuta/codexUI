@@ -58,3 +58,4 @@
 - Added project cron automation notes for sidebar project-level automation management.
 - Updated project cron automation notes for the combined Automations panel.
 - Updated Automations panel notes for active/newest sorting and direct edit buttons.
+- Updated project cron automation notes for absolute cwd validation and multi-cwd preservation.
