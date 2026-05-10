@@ -578,6 +578,7 @@
               :selected-automation-id="routeAutomationId"
               @select-automation="onSelectAutomationInPanel"
               @edit-automation="onEditAutomationFromPanel"
+              @create-automation="onCreateAutomationFromPanel"
             />
           </template>
           <template v-else-if="isHomeRoute">
@@ -1369,6 +1370,7 @@ const router = useRouter()
 const { isMobile } = useMobile()
 type SidebarThreadTreeExposed = {
   openAutomationEditorFromPanel: (payload: AutomationEditRequest) => void
+  openAutomationCreatorFromPanel: (payload: AutomationCreateRequest) => void
 }
 type AutomationsPanelExposed = {
   loadAutomations: () => Promise<void>
@@ -1377,6 +1379,10 @@ type AutomationEditRequest = {
   scope: 'thread' | 'project'
   target: string
   automation: UiThreadAutomation
+}
+type AutomationCreateRequest = {
+  scope: 'thread' | 'project'
+  target: string
 }
 const sidebarThreadTreeRef = ref<SidebarThreadTreeExposed | null>(null)
 const automationsPanelRef = ref<AutomationsPanelExposed | null>(null)
@@ -2155,6 +2161,14 @@ async function onEditAutomationFromPanel(payload: AutomationEditRequest): Promis
     await nextTick()
   }
   sidebarThreadTreeRef.value?.openAutomationEditorFromPanel(payload)
+}
+
+async function onCreateAutomationFromPanel(payload: AutomationCreateRequest): Promise<void> {
+  if (isSidebarCollapsed.value) {
+    setSidebarCollapsed(false)
+    await nextTick()
+  }
+  sidebarThreadTreeRef.value?.openAutomationCreatorFromPanel(payload)
 }
 
 function onAutomationsChanged(): void {

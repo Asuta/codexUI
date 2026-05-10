@@ -1815,6 +1815,21 @@ function openAutomationEditorFromPanel(payload: {
   closeThreadMenu()
 }
 
+function openAutomationCreatorFromPanel(payload: {
+  scope: 'thread' | 'project'
+  target: string
+}): void {
+  automationDialogScope.value = payload.scope
+  automationDialogThreadId.value = payload.scope === 'thread' ? payload.target : ''
+  automationDialogProjectName.value = payload.scope === 'project' ? payload.target : ''
+  automationDialogError.value = ''
+  automationDialogNotice.value = ''
+  startNewAutomationDraft()
+  automationDialogVisible.value = true
+  closeProjectMenu()
+  closeThreadMenu()
+}
+
 function startNewAutomationDraft(): void {
   automationDialogAutomationId.value = ''
   automationDialogMode.value = 'create'
@@ -2005,6 +2020,7 @@ function getProjectDisplayName(projectName: string): string {
 
 defineExpose({
   openAutomationEditorFromPanel,
+  openAutomationCreatorFromPanel,
 })
 
 function isPathLikeProjectName(value: string): boolean {
