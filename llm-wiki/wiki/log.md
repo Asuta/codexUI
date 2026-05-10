@@ -46,3 +46,10 @@
 - Created wiki page: `concepts/thread-heartbeat-automations.md`.
 - Documents: multiple heartbeat automations per thread, ID-aware manager operations, and manual `Run now` behavior through the persisted thread queue.
 - Updated `index.md`.
+
+## [2026-05-10] ingest | selective upstream sync cursor
+- Added source: `raw/upstream-sync/2026-05-10-friuns2-a26c4cc.md`.
+- Created wiki page: `concepts/upstream-sync.md`.
+- Added machine-readable state: `.agents/upstream-sync-state.json`.
+- Documents: upstream commit cursor `a26c4cc`, imported feature groups, preserved fork behavior, skipped upstream areas, and verification commands for the 2026-05-10 sync.
+- Updated `index.md`.
