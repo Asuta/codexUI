@@ -55,6 +55,15 @@
 
 - Before merging to local `main`, diff-compare all changes on the current branch against `main`.
 
+## Upstream Sync Ledger
+
+- Before any upstream sync from `friuns2/codexui`, read `.agents/upstream-sync-state.json` first.
+- Then read `llm-wiki/wiki/concepts/upstream-sync.md`.
+- Use `lastSyncedUpstreamCommit` as the cursor and inspect only `<cursor>..upstream/main`.
+- Do not re-import feature groups listed in `syncedFeatureGroups`.
+- Preserve fork-specific behavior listed in `preservedForkFeatures`.
+- If upstream deletes a file that only exists in this fork, verify whether the deletion is an upstream absence rather than an intended removal.
+
 ## PR Review Bot Workflow (MANDATORY)
 
 - Treat Qodo and other review-bot comments as advisory findings, not authoritative fix instructions.
