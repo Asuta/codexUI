@@ -593,7 +593,7 @@
         @click.stop
       >
         <button class="thread-menu-item" type="button" @click="openAutomationDialog(openThreadMenuThread.id)">
-          {{ threadHasAutomation(openThreadMenuThread.id) ? 'Edit automation…' : 'Add automation…' }}
+          {{ threadHasAutomation(openThreadMenuThread.id) ? 'Manage automations…' : 'Add automation…' }}
         </button>
         <button class="thread-menu-item" type="button" @click="onBrowseThreadFiles(openThreadMenuThread.id)">
           Browse files
@@ -644,10 +644,10 @@
     <Teleport to="body">
       <div v-if="deleteThreadDialogVisible" class="rename-thread-overlay" @click.self="closeDeleteThreadDialog">
         <div class="rename-thread-panel" role="dialog" aria-modal="true" aria-label="Delete thread">
-          <h3 class="rename-thread-title">{{ deleteThreadHasAutomation ? 'Archive chat and remove automation?' : 'Delete thread?' }}</h3>
+          <h3 class="rename-thread-title">{{ deleteThreadHasAutomation ? 'Archive chat and remove automations?' : 'Delete thread?' }}</h3>
           <p class="rename-thread-subtitle">
             <template v-if="deleteThreadHasAutomation">
-              This will archive the thread "{{ deleteThreadTitle }}" and remove the attached heartbeat automation.
+              This will archive the thread "{{ deleteThreadTitle }}" and remove the attached heartbeat automations.
             </template>
             <template v-else>
               This will archive the thread "{{ deleteThreadTitle }}". You can find it later in archived threads.
@@ -667,7 +667,24 @@
       <div v-if="automationDialogVisible" class="rename-thread-overlay" @click.self="closeAutomationDialog">
         <div class="rename-thread-panel automation-thread-panel" role="dialog" aria-modal="true" aria-label="Thread automation">
           <h3 class="rename-thread-title">{{ automationDialogMode === 'edit' ? 'Edit automation' : 'Add automation' }}</h3>
-          <p class="rename-thread-subtitle">This creates a heartbeat automation attached to the selected thread.</p>
+          <p class="rename-thread-subtitle">This creates heartbeat automations attached to the selected thread.</p>
+
+          <div v-if="automationDialogAutomations.length > 0" class="automation-thread-list" aria-label="Thread automations">
+            <button
+              v-for="automation in automationDialogAutomations"
+              :key="automation.id"
+              class="automation-thread-list-item"
+              :class="{ 'is-active': automation.id === automationDialogAutomationId }"
+              type="button"
+              @click="selectAutomationForEditing(automation.id)"
+            >
+              <span>{{ automation.name }}</span>
+              <small>{{ automation.status === 'PAUSED' ? 'Paused' : 'Active' }}</small>
+            </button>
+            <button class="automation-thread-list-item automation-thread-list-add" type="button" @click="startNewAutomationDraft">
+              Add another automation
+            </button>
+          </div>
 
           <label class="automation-thread-field">
             <span class="automation-thread-label">Name</span>
@@ -679,15 +696,76 @@
             <textarea v-model="automationDraft.prompt" class="automation-thread-textarea" rows="6" placeholder="Describe what the automation should do"></textarea>
           </label>
 
-          <label class="automation-thread-field">
-            <span class="automation-thread-label">Schedule (RRULE)</span>
+          <div class="automation-thread-field">
+            <span class="automation-thread-label">Schedule</span>
+            <div class="automation-schedule-mode-group" role="radiogroup" aria-label="Automation schedule type">
+              <button
+                class="automation-schedule-mode"
+                :class="{ 'is-active': automationScheduleDraft.mode === 'daily' }"
+                type="button"
+                @click="setAutomationScheduleMode('daily')"
+              >
+                Daily
+              </button>
+              <button
+                class="automation-schedule-mode"
+                :class="{ 'is-active': automationScheduleDraft.mode === 'interval' }"
+                type="button"
+                @click="setAutomationScheduleMode('interval')"
+              >
+                Interval
+              </button>
+              <button
+                class="automation-schedule-mode"
+                :class="{ 'is-active': automationScheduleDraft.mode === 'advanced' }"
+                type="button"
+                @click="setAutomationScheduleMode('advanced')"
+              >
+                RRULE
+              </button>
+            </div>
+
+            <div v-if="automationScheduleDraft.mode === 'daily'" class="automation-schedule-row">
+              <span class="automation-schedule-copy">Run every day at</span>
+              <input
+                v-model="automationScheduleDraft.dailyTime"
+                class="automation-schedule-time"
+                type="time"
+                @input="syncAutomationRruleFromScheduleDraft"
+              />
+            </div>
+
+            <div v-else-if="automationScheduleDraft.mode === 'interval'" class="automation-schedule-row">
+              <span class="automation-schedule-copy">Run every</span>
+              <input
+                v-model.number="automationScheduleDraft.interval"
+                class="automation-schedule-number"
+                type="number"
+                min="1"
+                step="1"
+                @input="syncAutomationRruleFromScheduleDraft"
+              />
+              <select
+                v-model="automationScheduleDraft.intervalUnit"
+                class="automation-schedule-unit"
+                @change="syncAutomationRruleFromScheduleDraft"
+              >
+                <option value="minutes">minutes</option>
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+              </select>
+            </div>
+
             <input
+              v-if="automationScheduleDraft.mode === 'advanced'"
               v-model="automationDraft.rrule"
               class="rename-thread-input"
               type="text"
               placeholder="FREQ=DAILY;BYHOUR=9;BYMINUTE=0"
+              @input="syncAutomationScheduleDraftFromRrule"
             />
-          </label>
+            <p class="automation-schedule-preview">{{ automationSchedulePreview }}</p>
+          </div>
 
           <label class="automation-thread-field">
             <span class="automation-thread-label">Status</span>
@@ -698,21 +776,31 @@
           </label>
 
           <p v-if="automationDialogError" class="rename-thread-subtitle automation-thread-error">{{ automationDialogError }}</p>
+          <p v-else-if="automationDialogNotice" class="rename-thread-subtitle automation-thread-notice">{{ automationDialogNotice }}</p>
 
           <div class="rename-thread-actions">
             <button
               v-if="automationDialogMode === 'edit'"
+              class="rename-thread-button"
+              type="button"
+              :disabled="isSavingAutomation || isRunningAutomation"
+              @click="onRunAutomationFromDialog"
+            >
+              {{ isRunningAutomation ? 'Running…' : 'Run now' }}
+            </button>
+            <button
+              v-if="automationDialogMode === 'edit'"
               class="rename-thread-button rename-thread-button-danger"
               type="button"
-              :disabled="isSavingAutomation"
+              :disabled="isSavingAutomation || isRunningAutomation"
               @click="onDeleteAutomationFromDialog"
             >
               Remove
             </button>
-            <button class="rename-thread-button" type="button" :disabled="isSavingAutomation" @click="closeAutomationDialog">
+            <button class="rename-thread-button" type="button" :disabled="isSavingAutomation || isRunningAutomation" @click="closeAutomationDialog">
               {{ t('Cancel') }}
             </button>
-            <button class="rename-thread-button rename-thread-button-primary" type="button" :disabled="isSavingAutomation" @click="submitAutomationDialog">
+            <button class="rename-thread-button rename-thread-button-primary" type="button" :disabled="isSavingAutomation || isRunningAutomation" @click="submitAutomationDialog">
               {{ isSavingAutomation ? 'Saving…' : 'Save' }}
             </button>
           </div>
@@ -729,7 +817,9 @@ import {
   deleteThreadAutomation,
   getPinnedThreadState,
   getThreadAutomationMap,
+  getThreadSummary,
   persistPinnedThreadIds,
+  runThreadAutomationNow,
   upsertThreadAutomation,
 } from '../../api/codexGateway'
 import type { UiProjectGroup, UiThread, UiThreadAutomation, UiThreadAutomationStatus } from '../../types/codex'
@@ -745,6 +835,7 @@ import IconTablerTrash from '../icons/IconTablerTrash.vue'
 import { useUiLanguage } from '../../composables/useUiLanguage'
 import { getPathLeafName, getPathParent, isProjectlessChatPath } from '../../pathUtils.js'
 import SidebarMenuRow from './SidebarMenuRow.vue'
+import { reconcilePinnedThreadIds } from './pinnedThreadUtils'
 
 const props = defineProps<{
   groups: UiProjectGroup[]
@@ -752,6 +843,7 @@ const props = defineProps<{
   projectGitRepoByName: Record<string, boolean>
   selectedThreadId: string
   isLoading: boolean
+  isThreadListFullyLoaded: boolean
   searchQuery: string
   searchMatchedThreadIds: string[] | null
   filterActive: boolean
@@ -765,6 +857,7 @@ const emit = defineEmits<{
   'start-new-thread': [projectName: string]
   'browse-thread-files': [threadId: string]
   'browse-project-files': [projectName: string]
+  'request-project-git-status': [projectName: string]
   'create-project-worktree': [projectName: string]
   'rename-project': [payload: { projectName: string; displayName: string }]
   'rename-thread': [payload: { threadId: string; title: string }]
@@ -807,6 +900,15 @@ type DragPointerSample = {
 
 type MenuDirection = 'up' | 'down'
 type ChatSortMode = 'created' | 'updated'
+type AutomationScheduleMode = 'daily' | 'interval' | 'advanced'
+type AutomationIntervalUnit = 'minutes' | 'hours' | 'days'
+
+type AutomationScheduleDraft = {
+  mode: AutomationScheduleMode
+  dailyTime: string
+  interval: number
+  intervalUnit: AutomationIntervalUnit
+}
 
 const DRAG_START_THRESHOLD_PX = 4
 const PROJECT_GROUP_EXPANDED_GAP_PX = 6
@@ -824,6 +926,7 @@ const showChatsFirst = ref(loadBooleanStorage(CHATS_FIRST_STORAGE_KEY, false))
 const chatSortMode = ref<ChatSortMode>(loadChatSortMode())
 let hasLoadedPinnedThreadState = false
 const pinnedThreadIds = ref<string[]>([])
+const hydratedPinnedThreadById = ref<Record<string, UiThread>>({})
 const inlineDeleteConfirmThreadId = ref('')
 const optimisticallyArchivedThreadIds = ref<string[]>([])
 const openProjectMenuId = ref('')
@@ -840,12 +943,15 @@ const renameThreadInputRef = ref<HTMLInputElement | null>(null)
 const deleteThreadDialogVisible = ref(false)
 const deleteThreadDialogThreadId = ref('')
 const deleteThreadTitle = ref('')
-const automationByThreadId = ref<Record<string, UiThreadAutomation>>({})
+const automationByThreadId = ref<Record<string, UiThreadAutomation[]>>({})
 const automationDialogVisible = ref(false)
 const automationDialogThreadId = ref('')
+const automationDialogAutomationId = ref('')
 const automationDialogMode = ref<'create' | 'edit'>('create')
 const automationDialogError = ref('')
+const automationDialogNotice = ref('')
 const isSavingAutomation = ref(false)
+const isRunningAutomation = ref(false)
 const automationDraft = ref<{
   name: string
   prompt: string
@@ -857,6 +963,17 @@ const automationDraft = ref<{
   rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
   status: 'ACTIVE',
 })
+const automationScheduleDraft = ref<AutomationScheduleDraft>({
+  mode: 'daily',
+  dailyTime: '09:00',
+  interval: 1,
+  intervalUnit: 'hours',
+})
+const automationDialogAutomations = computed(() => {
+  const threadId = automationDialogThreadId.value
+  return threadId ? (automationByThreadId.value[threadId] ?? []) : []
+})
+const automationSchedulePreview = computed(() => describeAutomationSchedule(automationDraft.value.rrule))
 const groupsContainerRef = ref<HTMLElement | null>(null)
 const pendingProjectDrag = ref<PendingProjectDrag | null>(null)
 const activeProjectDrag = ref<ActiveProjectDrag | null>(null)
@@ -1069,10 +1186,48 @@ watch(
   },
 )
 
-watch(threadById, (threadsById) => {
-  const filtered = pinnedThreadIds.value.filter((threadId) => threadsById.has(threadId))
+watch([threadById, () => props.isThreadListFullyLoaded], ([threadsById]) => {
+  const filtered = reconcilePinnedThreadIds(pinnedThreadIds.value, new Set(threadsById.keys()), {
+    canPruneMissing: props.isThreadListFullyLoaded,
+  })
   if (filtered.length === pinnedThreadIds.value.length) return
+  const filteredIdSet = new Set(filtered)
+  const nextHydratedPinnedThreads = Object.fromEntries(
+    Object.entries(hydratedPinnedThreadById.value).filter(([threadId]) => filteredIdSet.has(threadId)),
+  )
+  hydratedPinnedThreadById.value = nextHydratedPinnedThreads
   pinnedThreadIds.value = filtered
+})
+
+let pinnedThreadHydrationVersion = 0
+
+async function hydrateMissingPinnedThreads(): Promise<void> {
+  if (props.isLoading) return
+  const missingThreadIds = pinnedThreadIds.value.filter((threadId) => !threadById.value.has(threadId) && !hydratedPinnedThreadById.value[threadId])
+  if (missingThreadIds.length === 0) return
+
+  const version = (pinnedThreadHydrationVersion += 1)
+  const loadedThreads = await Promise.all(
+    missingThreadIds.map(async (threadId) => {
+      try {
+        return await getThreadSummary(threadId)
+      } catch {
+        return null
+      }
+    }),
+  )
+  if (version !== pinnedThreadHydrationVersion) return
+
+  const next = { ...hydratedPinnedThreadById.value }
+  for (const thread of loadedThreads) {
+    if (thread) next[thread.id] = thread
+  }
+  hydratedPinnedThreadById.value = next
+}
+
+watch([pinnedThreadIds, threadById, () => props.isLoading], () => {
+  if (!hasLoadedPinnedThreadState) return
+  void hydrateMissingPinnedThreads()
 })
 
 onMounted(async () => {
@@ -1093,6 +1248,7 @@ onMounted(async () => {
     automationByThreadId.value = {}
   }
   hasLoadedPinnedThreadState = true
+  void hydrateMissingPinnedThreads()
 })
 
 const deleteThreadHasAutomation = computed(() => threadHasAutomation(deleteThreadDialogThreadId.value))
@@ -1132,7 +1288,7 @@ const openThreadMenuThread = computed(() => {
 
 const pinnedThreads = computed(() =>
   pinnedThreadIds.value
-    .map((threadId) => threadById.value.get(threadId) ?? null)
+    .map((threadId) => threadById.value.get(threadId) ?? hydratedPinnedThreadById.value[threadId] ?? null)
     .filter((thread): thread is UiThread => thread !== null)
     .filter(threadMatchesSearch),
 )
@@ -1253,18 +1409,127 @@ function onSelect(threadId: string): void {
 }
 
 function threadHasAutomation(threadId: string): boolean {
-  return Boolean(automationByThreadId.value[threadId])
+  return (automationByThreadId.value[threadId]?.length ?? 0) > 0
 }
 
 function threadAutomationTooltip(threadId: string): string {
-  const automation = automationByThreadId.value[threadId]
-  if (!automation) return ''
+  const automations = automationByThreadId.value[threadId] ?? []
+  if (automations.length === 0) return ''
+  if (automations.length > 1) {
+    const activeCount = automations.filter((automation) => automation.status === 'ACTIVE').length
+    return `${automations.length} automations • ${activeCount} active`
+  }
+  const [automation] = automations
   const nextRunLabel = automation.status === 'PAUSED'
     ? '-'
     : automation.nextRunAtMs
       ? new Date(automation.nextRunAtMs).toLocaleString()
       : 'Not scheduled'
   return `${automation.name} • Next run: ${nextRunLabel}`
+}
+
+function padRruleNumber(value: number): string {
+  return String(Math.max(0, value)).padStart(2, '0')
+}
+
+function parsePositiveInteger(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(1, Math.floor(parsed))
+}
+
+function buildDailyRrule(time: string): string {
+  const [rawHour, rawMinute] = time.split(':')
+  const hour = Math.min(23, Math.max(0, Number(rawHour) || 0))
+  const minute = Math.min(59, Math.max(0, Number(rawMinute) || 0))
+  return `FREQ=DAILY;BYHOUR=${hour};BYMINUTE=${minute}`
+}
+
+function buildIntervalRrule(interval: number, unit: AutomationIntervalUnit): string {
+  const normalizedInterval = parsePositiveInteger(interval, 1)
+  if (unit === 'minutes') return `FREQ=MINUTELY;INTERVAL=${normalizedInterval}`
+  if (unit === 'hours') return `FREQ=HOURLY;INTERVAL=${normalizedInterval}`
+  return `FREQ=DAILY;INTERVAL=${normalizedInterval}`
+}
+
+function parseRruleParts(rrule: string): Record<string, string> {
+  return Object.fromEntries(
+    rrule
+      .split(';')
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const [key, ...rest] = part.split('=')
+        return [key.toUpperCase(), rest.join('=').trim()]
+      })
+      .filter(([key, value]) => key && value),
+  )
+}
+
+function createScheduleDraftFromRrule(rrule: string): AutomationScheduleDraft {
+  const parts = parseRruleParts(rrule)
+  const frequency = parts.FREQ?.toUpperCase()
+  const interval = parsePositiveInteger(parts.INTERVAL, 1)
+  if (frequency === 'DAILY' && parts.BYHOUR !== undefined && parts.BYMINUTE !== undefined && interval === 1) {
+    const hour = Math.min(23, Math.max(0, Number(parts.BYHOUR) || 0))
+    const minute = Math.min(59, Math.max(0, Number(parts.BYMINUTE) || 0))
+    return {
+      mode: 'daily',
+      dailyTime: `${padRruleNumber(hour)}:${padRruleNumber(minute)}`,
+      interval: 1,
+      intervalUnit: 'hours',
+    }
+  }
+  if (frequency === 'MINUTELY' || frequency === 'HOURLY' || (frequency === 'DAILY' && parts.INTERVAL !== undefined)) {
+    return {
+      mode: 'interval',
+      dailyTime: '09:00',
+      interval,
+      intervalUnit: frequency === 'MINUTELY' ? 'minutes' : frequency === 'HOURLY' ? 'hours' : 'days',
+    }
+  }
+  return {
+    mode: 'advanced',
+    dailyTime: '09:00',
+    interval: 1,
+    intervalUnit: 'hours',
+  }
+}
+
+function describeAutomationSchedule(rrule: string): string {
+  const parts = parseRruleParts(rrule)
+  const frequency = parts.FREQ?.toUpperCase()
+  const interval = parsePositiveInteger(parts.INTERVAL, 1)
+  if (frequency === 'DAILY' && parts.BYHOUR !== undefined && parts.BYMINUTE !== undefined && interval === 1) {
+    const hour = Math.min(23, Math.max(0, Number(parts.BYHOUR) || 0))
+    const minute = Math.min(59, Math.max(0, Number(parts.BYMINUTE) || 0))
+    return `RRULE: ${rrule} · runs daily at ${padRruleNumber(hour)}:${padRruleNumber(minute)}`
+  }
+  if (frequency === 'MINUTELY') return `RRULE: ${rrule} · runs every ${interval} minute${interval === 1 ? '' : 's'}`
+  if (frequency === 'HOURLY') return `RRULE: ${rrule} · runs every ${interval} hour${interval === 1 ? '' : 's'}`
+  if (frequency === 'DAILY' && parts.INTERVAL !== undefined) return `RRULE: ${rrule} · runs every ${interval} day${interval === 1 ? '' : 's'}`
+  return rrule ? `RRULE: ${rrule}` : 'RRULE is required.'
+}
+
+function syncAutomationRruleFromScheduleDraft(): void {
+  const draft = automationScheduleDraft.value
+  if (draft.mode === 'daily') {
+    automationDraft.value.rrule = buildDailyRrule(draft.dailyTime)
+  } else if (draft.mode === 'interval') {
+    automationDraft.value.rrule = buildIntervalRrule(draft.interval, draft.intervalUnit)
+  }
+}
+
+function syncAutomationScheduleDraftFromRrule(): void {
+  automationScheduleDraft.value = createScheduleDraftFromRrule(automationDraft.value.rrule)
+}
+
+function setAutomationScheduleMode(mode: AutomationScheduleMode): void {
+  automationScheduleDraft.value = {
+    ...automationScheduleDraft.value,
+    mode,
+  }
+  syncAutomationRruleFromScheduleDraft()
 }
 
 function onExportThread(threadId: string): void {
@@ -1413,32 +1678,91 @@ function deleteThreadById(threadId: string): void {
 
   if (threadHasAutomation(threadId)) {
     void deleteThreadAutomation(threadId).catch(() => undefined)
-    automationByThreadId.value = Object.fromEntries(
-      Object.entries(automationByThreadId.value).filter(([id]) => id !== threadId),
-    )
+    automationByThreadId.value = omitAutomationThread(automationByThreadId.value, threadId)
   }
 }
 
 function openAutomationDialog(threadId: string): void {
-  const existing = automationByThreadId.value[threadId]
   automationDialogThreadId.value = threadId
-  automationDialogMode.value = existing ? 'edit' : 'create'
   automationDialogError.value = ''
-  automationDraft.value = {
-    name: existing?.name ?? 'Thread automation',
-    prompt: existing?.prompt ?? '',
-    rrule: existing?.rrule ?? 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
-    status: existing?.status ?? 'ACTIVE',
+  automationDialogNotice.value = ''
+  const existing = automationByThreadId.value[threadId]?.[0]
+  if (existing) {
+    selectAutomationForEditing(existing.id)
+  } else {
+    startNewAutomationDraft()
   }
   automationDialogVisible.value = true
   closeThreadMenu()
 }
 
+function startNewAutomationDraft(): void {
+  automationDialogAutomationId.value = ''
+  automationDialogMode.value = 'create'
+  automationDialogError.value = ''
+  automationDialogNotice.value = ''
+  automationDraft.value = {
+    name: 'Thread automation',
+    prompt: '',
+    rrule: 'FREQ=DAILY;BYHOUR=9;BYMINUTE=0',
+    status: 'ACTIVE',
+  }
+  automationScheduleDraft.value = createScheduleDraftFromRrule(automationDraft.value.rrule)
+}
+
+function selectAutomationForEditing(automationId: string): void {
+  const existing = automationDialogAutomations.value.find((automation) => automation.id === automationId)
+  if (!existing) return
+  automationDialogAutomationId.value = existing.id
+  automationDialogMode.value = 'edit'
+  automationDialogError.value = ''
+  automationDialogNotice.value = ''
+  automationDraft.value = {
+    name: existing.name,
+    prompt: existing.prompt,
+    rrule: existing.rrule,
+    status: existing.status,
+  }
+  automationScheduleDraft.value = createScheduleDraftFromRrule(existing.rrule)
+}
+
 function closeAutomationDialog(): void {
   automationDialogVisible.value = false
   automationDialogThreadId.value = ''
+  automationDialogAutomationId.value = ''
   automationDialogError.value = ''
+  automationDialogNotice.value = ''
   isSavingAutomation.value = false
+  isRunningAutomation.value = false
+}
+
+function omitAutomationThread(state: Record<string, UiThreadAutomation[]>, threadId: string): Record<string, UiThreadAutomation[]> {
+  return Object.fromEntries(Object.entries(state).filter(([id]) => id !== threadId))
+}
+
+function updateAutomationForThread(
+  state: Record<string, UiThreadAutomation[]>,
+  threadId: string,
+  saved: UiThreadAutomation,
+): Record<string, UiThreadAutomation[]> {
+  const existing = state[threadId] ?? []
+  const index = existing.findIndex((automation) => automation.id === saved.id)
+  const next = [...existing]
+  if (index >= 0) {
+    next.splice(index, 1, saved)
+  } else {
+    next.push(saved)
+  }
+  return { ...state, [threadId]: next }
+}
+
+function removeAutomationForThread(
+  state: Record<string, UiThreadAutomation[]>,
+  threadId: string,
+  automationId: string,
+): Record<string, UiThreadAutomation[]> {
+  const next = (state[threadId] ?? []).filter((automation) => automation.id !== automationId)
+  return next.length > 0 ? { ...state, [threadId]: next } : omitAutomationThread(state, threadId)
 }
 
 async function submitAutomationDialog(): Promise<void> {
@@ -1446,19 +1770,21 @@ async function submitAutomationDialog(): Promise<void> {
   if (!threadId) return
   isSavingAutomation.value = true
   automationDialogError.value = ''
+  automationDialogNotice.value = ''
   try {
+    syncAutomationRruleFromScheduleDraft()
     const saved = await upsertThreadAutomation({
       threadId,
+      id: automationDialogAutomationId.value || undefined,
       name: automationDraft.value.name,
       prompt: automationDraft.value.prompt,
       rrule: automationDraft.value.rrule,
       status: automationDraft.value.status,
     })
-    automationByThreadId.value = {
-      ...automationByThreadId.value,
-      [threadId]: saved,
-    }
-    closeAutomationDialog()
+    automationByThreadId.value = updateAutomationForThread(automationByThreadId.value, threadId, saved)
+    selectAutomationForEditing(saved.id)
+    automationDialogNotice.value = 'Automation saved.'
+    isSavingAutomation.value = false
   } catch (error) {
     automationDialogError.value = error instanceof Error ? error.message : 'Failed to save automation'
     isSavingAutomation.value = false
@@ -1467,18 +1793,41 @@ async function submitAutomationDialog(): Promise<void> {
 
 async function onDeleteAutomationFromDialog(): Promise<void> {
   const threadId = automationDialogThreadId.value
-  if (!threadId) return
+  const automationId = automationDialogAutomationId.value
+  if (!threadId || !automationId) return
   isSavingAutomation.value = true
   automationDialogError.value = ''
+  automationDialogNotice.value = ''
   try {
-    await deleteThreadAutomation(threadId)
-    automationByThreadId.value = Object.fromEntries(
-      Object.entries(automationByThreadId.value).filter(([id]) => id !== threadId),
-    )
-    closeAutomationDialog()
+    await deleteThreadAutomation(threadId, automationId)
+    automationByThreadId.value = removeAutomationForThread(automationByThreadId.value, threadId, automationId)
+    const nextAutomation = automationByThreadId.value[threadId]?.[0]
+    if (nextAutomation) {
+      selectAutomationForEditing(nextAutomation.id)
+    } else {
+      startNewAutomationDraft()
+    }
+    isSavingAutomation.value = false
   } catch (error) {
     automationDialogError.value = error instanceof Error ? error.message : 'Failed to remove automation'
     isSavingAutomation.value = false
+  }
+}
+
+async function onRunAutomationFromDialog(): Promise<void> {
+  const threadId = automationDialogThreadId.value
+  const automationId = automationDialogAutomationId.value
+  if (!threadId || !automationId) return
+  isRunningAutomation.value = true
+  automationDialogError.value = ''
+  automationDialogNotice.value = ''
+  try {
+    await runThreadAutomationNow(threadId, automationId)
+    automationDialogNotice.value = 'Automation run queued.'
+  } catch (error) {
+    automationDialogError.value = error instanceof Error ? error.message : 'Failed to run automation'
+  } finally {
+    isRunningAutomation.value = false
   }
 }
 
@@ -1561,6 +1910,13 @@ function setChatSortMode(mode: ChatSortMode): void {
   chatSortMode.value = mode
 }
 
+function requestProjectGitStatusAndUpdateMenuDirection(projectName: string): void {
+  emit('request-project-git-status', projectName)
+  nextTick(() => {
+    updateProjectMenuDirection(projectName)
+  })
+}
+
 function toggleProjectMenu(projectName: string): void {
   if (openProjectMenuId.value === projectName) {
     closeProjectMenu()
@@ -1572,9 +1928,7 @@ function toggleProjectMenu(projectName: string): void {
   openProjectMenuId.value = projectName
   projectMenuMode.value = 'actions'
   projectRenameDraft.value = getProjectDisplayName(projectName)
-  nextTick(() => {
-    updateProjectMenuDirection(projectName)
-  })
+  requestProjectGitStatusAndUpdateMenuDirection(projectName)
 }
 
 function openProjectContextMenu(projectName: string): void {
@@ -1583,9 +1937,7 @@ function openProjectContextMenu(projectName: string): void {
   openProjectMenuId.value = projectName
   projectMenuMode.value = 'actions'
   projectRenameDraft.value = getProjectDisplayName(projectName)
-  nextTick(() => {
-    updateProjectMenuDirection(projectName)
-  })
+  requestProjectGitStatusAndUpdateMenuDirection(projectName)
 }
 
 function getProjectRenameDraftName(group: UiProjectGroup): string {
@@ -1757,10 +2109,12 @@ function getThreadMenuDirection(threadId: string): MenuDirection {
 function updateProjectMenuDirection(projectName: string): void {
   const menuWrapElement = projectMenuWrapElementByName.get(projectName)
   if (!menuWrapElement) return
+  const menuPanelElement = menuWrapElement.querySelector<HTMLElement>('.project-menu-panel')
+  const panelHeight = menuPanelElement?.getBoundingClientRect().height ?? 0
 
   projectMenuDirectionById.value = {
     ...projectMenuDirectionById.value,
-    [projectName]: resolveMenuDirection(menuWrapElement, 176),
+    [projectName]: resolveMenuDirection(menuWrapElement, panelHeight),
   }
 }
 
@@ -1944,6 +2298,7 @@ function setProjectGroupRef(projectName: string, element: Element | ComponentPub
 
 function onProjectHandleMouseDown(event: MouseEvent, projectName: string): void {
   if (event.button !== 0) return
+  if (isSearchActive.value) return
   if (pendingProjectDrag.value || activeProjectDrag.value) return
 
   const fromIndex = props.groups.findIndex((group) => group.projectName === projectName)
@@ -2008,7 +2363,7 @@ function onProjectDragMouseUp(event: MouseEvent): void {
     }
   }
 
-  resetProjectDragState()
+  resetProjectDragState({ preserveToggleSuppression: Boolean(drag) })
 }
 
 function onProjectDragKeyDown(event: KeyboardEvent): void {
@@ -2019,7 +2374,7 @@ function onProjectDragKeyDown(event: KeyboardEvent): void {
   resetProjectDragState()
 }
 
-function resetProjectDragState(): void {
+function resetProjectDragState(options: { preserveToggleSuppression?: boolean } = {}): void {
   if (dragPointerRafId !== null) {
     window.cancelAnimationFrame(dragPointerRafId)
     dragPointerRafId = null
@@ -2027,7 +2382,9 @@ function resetProjectDragState(): void {
   pendingDragPointerSample = null
   pendingProjectDrag.value = null
   activeProjectDrag.value = null
-  suppressNextProjectToggleId.value = ''
+  if (!options.preserveToggleSuppression) {
+    suppressNextProjectToggleId.value = ''
+  }
   unbindProjectDragListeners()
 }
 
@@ -2219,6 +2576,22 @@ watch(
     if (Object.keys(nextMeasuredHeights).length !== Object.keys(measuredHeightByProject.value).length) {
       measuredHeightByProject.value = nextMeasuredHeights
     }
+  },
+)
+
+watch(
+  () => {
+    const projectName = openProjectMenuId.value
+    return projectName ? props.projectGitRepoByName[projectName] : undefined
+  },
+  () => {
+    const projectName = openProjectMenuId.value
+    if (!projectName) return
+    nextTick(() => {
+      if (openProjectMenuId.value === projectName) {
+        updateProjectMenuDirection(projectName)
+      }
+    })
   },
 )
 
@@ -2666,6 +3039,26 @@ onBeforeUnmount(() => {
   @apply mb-3 flex flex-col gap-1;
 }
 
+.automation-thread-list {
+  @apply mb-3 flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-zinc-200 bg-zinc-50 p-1;
+}
+
+.automation-thread-list-item {
+  @apply flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-white;
+}
+
+.automation-thread-list-item.is-active {
+  @apply bg-white font-medium text-zinc-950 shadow-sm;
+}
+
+.automation-thread-list-item small {
+  @apply text-xs font-normal text-zinc-500;
+}
+
+.automation-thread-list-add {
+  @apply justify-center border border-dashed border-zinc-300 text-zinc-500;
+}
+
 .automation-thread-label {
   @apply text-xs font-medium uppercase tracking-wide text-zinc-500;
 }
@@ -2675,7 +3068,45 @@ onBeforeUnmount(() => {
   @apply w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-zinc-500;
 }
 
+.automation-schedule-mode-group {
+  @apply grid grid-cols-3 gap-1 rounded-lg border border-zinc-200 bg-zinc-100 p-1;
+}
+
+.automation-schedule-mode {
+  @apply rounded-md px-2 py-1.5 text-xs font-medium text-zinc-600 hover:bg-white;
+}
+
+.automation-schedule-mode.is-active {
+  @apply bg-white text-zinc-950 shadow-sm;
+}
+
+.automation-schedule-row {
+  @apply mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2;
+}
+
+.automation-schedule-copy {
+  @apply text-sm text-zinc-600;
+}
+
+.automation-schedule-time,
+.automation-schedule-number,
+.automation-schedule-unit {
+  @apply rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm text-zinc-900 outline-none focus:border-zinc-500;
+}
+
+.automation-schedule-number {
+  @apply w-20;
+}
+
+.automation-schedule-preview {
+  @apply mt-1 text-xs text-zinc-500;
+}
+
 .automation-thread-error {
   @apply mb-0 text-rose-600;
+}
+
+.automation-thread-notice {
+  @apply mb-0 text-emerald-600;
 }
 </style>

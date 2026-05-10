@@ -1,0 +1,61 @@
+{
+  "upstream": "https://github.com/friuns2/codexui.git",
+  "forkRemote": "https://github.com/Asuta/codexUI.git",
+  "lastSyncedUpstreamCommit": "a26c4ccbef4212d0d816f391c075a253ac0ccfdc",
+  "lastSyncedUpstreamShortCommit": "a26c4cc",
+  "lastSyncMergeBase": "3e1fa11286751e825bf87ea22cda636b3a7e4ac8",
+  "lastSyncLocalStartCommit": "fc912d37a537695055769d67e12d2aece388d820",
+  "lastSyncResultCommit": "ef5af1945a81cd30abf9882edddc9235f593daaa",
+  "lastSyncBranch": "codex/upstream-sync-20260510-164819",
+  "lastSyncDate": "2026-05-10",
+  "syncedFeatureGroups": [
+    "backticked markdown file-link labels",
+    "terminal quick command dropdown",
+    "selected skill chips and session recovery",
+    "public shared skills pull scoped to shared_skills",
+    "lazy project git status checks",
+    "pinned thread pagination hydration",
+    "thread archive recovery",
+    "composer mode scoping and GPT-5.5 fast mode detection",
+    "multiple thread automations and Run now",
+    "automation schedule presets",
+    "worktree root persistence",
+    "OpenRouter and OpenCode Zen unauthenticated defaults",
+    "OpenCode Zen reasoning-content proxy preservation",
+    "startup status probe reduction",
+    "debug launcher hardening",
+    "PR review bot and performance audit workflow notes"
+  ],
+  "preservedForkFeatures": [
+    "Windows tray launcher",
+    "FRP/public proxy support",
+    "tunnel-safe local image URLs",
+    "fork-local dev wrapper and Vite allowlist behavior",
+    "paged historical thread hydration",
+    "fork-specific tests.md history"
+  ],
+  "skippedUpstreamAreas": [
+    "reverted project recency and mobile move mode",
+    "reverted configurable Vite allowed-hosts path",
+    "upstream file deletions that would remove fork-local Windows/FRP/public-proxy files"
+  ],
+  "verification": {
+    "typecheck": {
+      "command": "pnpm exec vue-tsc --noEmit",
+      "result": "passed"
+    },
+    "unit": {
+      "command": "pnpm run test:unit",
+      "result": "passed",
+      "testFiles": 12,
+      "tests": 63
+    },
+    "focusedUnit": {
+      "command": "pnpm exec vitest run src/api/normalizers/v2.test.ts src/components/sidebar/pinnedThreadUtils.test.ts src/server/codexAppServerBridge.archive.test.ts src/server/codexAppServerBridge.inlinePayload.test.ts src/server/freeMode.test.ts src/server/unifiedResponsesProxy.test.ts src/composables/useDesktopState.test.ts",
+      "result": "passed",
+      "testFiles": 7,
+      "tests": 46
+    }
+  },
+  "nextSyncCommandHint": "git fetch upstream --prune && git log --reverse --no-merges a26c4ccbef4212d0d816f391c075a253ac0ccfdc..upstream/main"
+}

@@ -64,6 +64,7 @@
             :project-git-repo-by-name="projectGitRepoByName"
             v-if="!isSidebarCollapsed"
             :selected-thread-id="selectedThreadId" :is-loading="isLoadingThreads"
+            :is-thread-list-fully-loaded="isThreadListFullyLoaded"
             :search-query="sidebarSearchQuery"
             :search-matched-thread-ids="serverMatchedThreadIds"
             :filter-active="isSidebarSearchVisible"
@@ -71,6 +72,7 @@
             @archive="onArchiveThread" @start-new-thread="onStartNewThread" @rename-project="onRenameProject"
             @browse-thread-files="onBrowseThreadFiles"
             @browse-project-files="onBrowseProjectFiles"
+            @request-project-git-status="onRequestProjectGitStatus"
             @create-project-worktree="onCreateProjectWorktree"
             @rename-thread="onRenameThread"
             @fork-thread="onForkThread"
@@ -1017,9 +1019,7 @@ const { t, uiLanguage, uiLanguageOptions, setUiLanguage } = useUiLanguage()
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'codex-web-local.sidebar-collapsed.v1'
 const ACCOUNTS_SECTION_COLLAPSED_STORAGE_KEY = 'codex-web-local.accounts-section-collapsed.v1'
 const TERMINAL_QUICK_COMMAND_STORAGE_KEY = 'codex-web-local.terminal-quick-commands.v1'
-const ADD_TERMINAL_COMMAND_VALUE = '__add_terminal_command__'
 const TOGGLE_TERMINAL_COMMAND_VALUE = '__toggle_terminal__'
-const MAX_HEADER_TERMINAL_COMMANDS = 5
 const worktreeName = import.meta.env.VITE_WORKTREE_NAME ?? 'unknown'
 const appVersion = import.meta.env.VITE_APP_VERSION ?? 'unknown'
 const SETTINGS_HELP = {
@@ -1205,6 +1205,7 @@ const {
   selectedThreadCanLoadOlderMessages,
   selectedThreadIsLoadingOlderMessages,
   isLoadingThreads,
+  isThreadListFullyLoaded,
   isLoadingMessages,
   isSendingMessage,
   isInterruptingTurn,
@@ -1268,6 +1269,7 @@ const hasInitialized = ref(false)
 const newThreadCwd = ref('')
 const newThreadRuntime = ref<'local' | 'worktree'>('local')
 const gitRepoStatusByCwd = ref<Record<string, boolean>>({})
+const gitRepoStatusRequestByCwd = new Map<string, Promise<boolean>>()
 const newWorktreeBaseBranch = ref('')
 const worktreeBranchOptions = ref<WorktreeBranchOption[]>([])
 const isLoadingWorktreeBranches = ref(false)
@@ -1736,16 +1738,13 @@ const terminalHeaderQuickCommands = computed<TerminalHeaderQuickCommand[]>(() =>
       custom: false,
       sourceIndex: index,
     })),
-    ...terminalStoredQuickCommands.value.filter((command) => command.custom === true),
   ]
   return combined
     .sort(compareTerminalQuickCommands)
-    .slice(0, MAX_HEADER_TERMINAL_COMMANDS)
 })
 const terminalHeaderDropdownOptions = computed(() => [
-  ...terminalHeaderQuickCommands.value.map((command) => ({ label: command.label, value: command.value })),
-  { label: 'Add command...', value: ADD_TERMINAL_COMMAND_VALUE },
   { label: isComposerTerminalOpen.value ? t('Hide terminal') : t('Open terminal'), value: TOGGLE_TERMINAL_COMMAND_VALUE },
+  ...terminalHeaderQuickCommands.value.map((command) => ({ label: command.label, value: command.value })),
 ])
 const contentStyle = computed(() => {
   const preset = CHAT_WIDTH_PRESETS[chatWidth.value]
@@ -2378,7 +2377,7 @@ async function onCreateProjectWorktree(projectName: string): Promise<void> {
 
     newThreadCwd.value = normalizedPath
     newThreadRuntime.value = 'local'
-    pinProjectToTop(getPathLeafName(normalizedPath))
+    pinProjectToTop(getProjectOrderNameForPath(normalizedPath))
     await loadWorkspaceRootOptionsState()
     await refreshDefaultProjectName()
     if (isMobile.value) setSidebarCollapsed(true)
@@ -2402,17 +2401,32 @@ function onStartNewThreadFromToolbar(): void {
 async function loadGitRepoStatus(cwdRaw: string): Promise<void> {
   const cwd = cwdRaw.trim()
   if (!cwd || Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) return
-  try {
-    const status = await getGitRepositoryStatus(cwd)
-    gitRepoStatusByCwd.value = {
-      ...gitRepoStatusByCwd.value,
-      [cwd]: status.isGitRepo,
+
+  const existingRequest = gitRepoStatusRequestByCwd.get(cwd)
+  if (existingRequest) {
+    const isGitRepo = await existingRequest
+    if (!Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) {
+      gitRepoStatusByCwd.value = {
+        ...gitRepoStatusByCwd.value,
+        [cwd]: isGitRepo,
+      }
     }
-  } catch {
-    gitRepoStatusByCwd.value = {
-      ...gitRepoStatusByCwd.value,
-      [cwd]: false,
-    }
+    return
+  }
+
+  const request = getGitRepositoryStatus(cwd)
+    .then((status) => status.isGitRepo)
+    .catch(() => false)
+    .finally(() => {
+      gitRepoStatusRequestByCwd.delete(cwd)
+    })
+  gitRepoStatusRequestByCwd.set(cwd, request)
+
+  const isGitRepo = await request
+  if (Object.prototype.hasOwnProperty.call(gitRepoStatusByCwd.value, cwd)) return
+  gitRepoStatusByCwd.value = {
+    ...gitRepoStatusByCwd.value,
+    [cwd]: isGitRepo,
   }
 }
 
@@ -2432,6 +2446,12 @@ async function onRemoveProject(projectName: string): Promise<void> {
 
 function onReorderProject(payload: { projectName: string; toIndex: number }): void {
   reorderProject(payload.projectName, payload.toIndex)
+}
+
+function onRequestProjectGitStatus(projectName: string): void {
+  const group = projectGroups.value.find((entry) => entry.projectName === projectName)
+  const cwd = resolvePreferredLocalCwd(projectName, group?.threads[0]?.cwd?.trim() ?? '')
+  void loadGitRepoStatus(cwd)
 }
 
 function onRespondServerRequest(payload: UiServerRequestReply): void {
@@ -2522,17 +2542,10 @@ function onSelectHeaderTerminalCommand(command: string): void {
     toggleComposerTerminal()
     return
   }
-  if (command === ADD_TERMINAL_COMMAND_VALUE) {
-    if (typeof window === 'undefined') return
-    const customCommand = normalizeTerminalQuickCommandValue(window.prompt('Add command') ?? '')
-    if (!customCommand) return
-    void openTerminalAndRunCommand(customCommand, true)
-    return
-  }
-  void openTerminalAndRunCommand(command, false)
+  void openTerminalAndRunCommand(command)
 }
 
-async function openTerminalAndRunCommand(command: string, custom: boolean): Promise<void> {
+async function openTerminalAndRunCommand(command: string): Promise<void> {
   if (!isThreadTerminalAvailable.value || !composerCwd.value) return
   if (isHomeRoute.value) {
     homeTerminalOpen.value = true
@@ -2544,18 +2557,19 @@ async function openTerminalAndRunCommand(command: string, custom: boolean): Prom
   const panel = await waitForTerminalPanel()
   if (!panel) return
   try {
-    await panel.runQuickCommand(command, custom)
-    recordHeaderTerminalCommandUse(command, custom)
+    await panel.runQuickCommand(command)
+    recordHeaderTerminalCommandUse(command)
   } catch {
     // ThreadTerminalPanel renders the terminal-specific error in place.
   }
 }
 
 async function waitForTerminalPanel(): Promise<ThreadTerminalPanelExposed | null> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
     await nextTick()
     const panel = isHomeRoute.value ? homeTerminalPanelRef.value : threadTerminalPanelRef.value
     if (panel) return panel
+    await new Promise((resolve) => window.setTimeout(resolve, 25))
   }
   return null
 }
@@ -2573,16 +2587,17 @@ async function refreshTerminalQuickCommands(): Promise<void> {
   }
 }
 
-function recordHeaderTerminalCommandUse(command: string, custom: boolean): void {
+function recordHeaderTerminalCommandUse(command: string): void {
   const normalized = normalizeTerminalQuickCommandValue(command)
   if (!normalized) return
   const existing = terminalStoredQuickCommands.value.find((row) => row.value === normalized)
   const projectCommandIndex = terminalProjectQuickCommands.value.findIndex((row) => row.value === normalized)
   const projectCommand = projectCommandIndex >= 0 ? terminalProjectQuickCommands.value[projectCommandIndex] : null
+  if (!projectCommand) return
   const nextCommand: TerminalHeaderQuickCommand = {
     label: existing?.label || projectCommand?.label || normalized,
     value: normalized,
-    custom: existing?.custom === true || (!projectCommand && custom),
+    custom: false,
     usageCount: (existing?.usageCount ?? 0) + 1,
     lastUsedAt: Date.now(),
     sourceIndex: projectCommandIndex >= 0 ? projectCommandIndex : undefined,
@@ -3128,7 +3143,7 @@ async function onConfirmExistingFolder(path = resolvedExistingFolderPath.value):
     }
 
     newThreadCwd.value = normalizedPath
-    pinProjectToTop(getPathLeafName(normalizedPath))
+    pinProjectToTop(getProjectOrderNameForPath(normalizedPath))
     await loadWorkspaceRootOptionsState()
     await refreshDefaultProjectName()
     onCloseExistingFolderPanel()
@@ -3220,7 +3235,7 @@ async function applyLaunchProjectPathFromUrl(): Promise<boolean> {
     })
     if (!normalizedPath) return false
     newThreadCwd.value = normalizedPath
-    pinProjectToTop(getPathLeafName(normalizedPath))
+    pinProjectToTop(getProjectOrderNameForPath(normalizedPath))
     await router.replace({ name: 'home' })
     await loadWorkspaceRootOptionsState()
     const nextUrl = new URL(window.location.href)
@@ -3937,6 +3952,15 @@ watch(
 )
 
 watch(
+  () => [route.name, composerCwd.value] as const,
+  ([routeName, cwd]) => {
+    if (routeName !== 'thread') return
+    void loadGitRepoStatus(cwd)
+  },
+  { immediate: true },
+)
+
+watch(
   () => selectedThreadId.value,
   async (threadId) => {
     if (!hasInitialized.value) return
@@ -3984,19 +4008,10 @@ watch(
 )
 
 watch(
-  () => newThreadCwd.value,
-  (cwd) => {
+  () => [route.name, newThreadCwd.value] as const,
+  ([routeName, cwd]) => {
+    if (routeName !== 'home') return
     void loadGitRepoStatus(cwd)
-  },
-  { immediate: true },
-)
-
-watch(
-  () => projectGroups.value.map((group) => resolvePreferredLocalCwd(group.projectName, group.threads[0]?.cwd?.trim() ?? '')).filter(Boolean),
-  (cwds) => {
-    for (const cwd of cwds) {
-      void loadGitRepoStatus(cwd)
-    }
   },
   { immediate: true },
 )

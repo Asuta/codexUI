@@ -25,6 +25,7 @@ import {
   readActiveTurnIdFromResponse,
   normalizeThreadGroupsV2,
   normalizeThreadMessagesV2,
+  normalizeThreadSummaryV2,
   normalizeThreadTurnsV2,
   readThreadInProgressFromResponse,
 } from './normalizers/v2'
@@ -39,6 +40,7 @@ import type {
   UiFileChange,
   UiMessage,
   UiProjectGroup,
+  UiThread,
   UiReviewAction,
   UiReviewActionLevel,
   UiReviewFile,
@@ -276,6 +278,9 @@ export type WorkspaceRootsState = {
     label: string
   }>
 }
+
+let workspaceRootsStatePromise: Promise<WorkspaceRootsState> | null = null
+let cachedWorkspaceRootsState: WorkspaceRootsState | null = null
 
 export type StoredQueuedMessage = {
   id: string
@@ -752,6 +757,14 @@ async function getThreadMessagesV2(threadId: string): Promise<UiMessage[]> {
   return normalizeThreadMessagesV2(payload)
 }
 
+async function getThreadSummaryV2(threadId: string): Promise<UiThread> {
+  const payload = await callRpc<ThreadReadResponse>('thread/read', {
+    threadId,
+    includeTurns: false,
+  })
+  return normalizeThreadSummaryV2(payload)
+}
+
 async function getThreadDetailV2(threadId: string): Promise<{
   messages: UiMessage[]
   inProgress: boolean
@@ -822,6 +835,14 @@ export function getBackgroundThreadListLimit(): number {
 export async function getThreadMessages(threadId: string): Promise<UiMessage[]> {
   try {
     return await getThreadMessagesV2(threadId)
+  } catch (error) {
+    throw normalizeCodexApiError(error, `Failed to load thread ${threadId}`, 'thread/read')
+  }
+}
+
+export async function getThreadSummary(threadId: string): Promise<UiThread> {
+  try {
+    return await getThreadSummaryV2(threadId)
   } catch (error) {
     throw normalizeCodexApiError(error, `Failed to load thread ${threadId}`, 'thread/read')
   }
@@ -1109,33 +1130,47 @@ function asAutomation(record: unknown): UiThreadAutomation | null {
   }
 }
 
-export async function getThreadAutomationMap(): Promise<Record<string, UiThreadAutomation>> {
+function asAutomationArray(value: unknown): UiThreadAutomation[] {
+  if (Array.isArray(value)) return value.flatMap((item) => {
+    const automation = asAutomation(item)
+    return automation ? [automation] : []
+  })
+  const automation = asAutomation(value)
+  return automation ? [automation] : []
+}
+
+export async function getThreadAutomationMap(): Promise<Record<string, UiThreadAutomation[]>> {
   const response = await fetch('/codex-api/thread-automations')
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(extractErrorMessage(payload, 'Failed to load thread automations'))
   }
   const data = asRecord(asRecord(payload)?.data)
-  const next: Record<string, UiThreadAutomation> = {}
+  const next: Record<string, UiThreadAutomation[]> = {}
   if (!data) return next
   for (const [threadId, value] of Object.entries(data)) {
-    const automation = asAutomation(value)
-    if (automation) next[threadId] = automation
+    const automations = asAutomationArray(value)
+    if (automations.length > 0) next[threadId] = automations
   }
   return next
 }
 
-export async function getThreadAutomation(threadId: string): Promise<UiThreadAutomation | null> {
-  const response = await fetch(`/codex-api/thread-automation?threadId=${encodeURIComponent(threadId)}`)
+export async function getThreadAutomation(threadId: string, automationId?: string): Promise<UiThreadAutomation | null> {
+  const query = new URLSearchParams({ threadId })
+  if (automationId) query.set('automationId', automationId)
+  const response = await fetch(`/codex-api/thread-automation?${query.toString()}`)
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(extractErrorMessage(payload, 'Failed to load thread automation'))
   }
-  return asAutomation(asRecord(payload)?.data)
+  const data = asRecord(payload)?.data
+  if (automationId) return asAutomation(data)
+  return asAutomationArray(data)[0] ?? null
 }
 
 export async function upsertThreadAutomation(input: {
   threadId: string
+  id?: string
   name: string
   prompt: string
   rrule: string
@@ -1155,13 +1190,27 @@ export async function upsertThreadAutomation(input: {
   return automation
 }
 
-export async function deleteThreadAutomation(threadId: string): Promise<void> {
-  const response = await fetch(`/codex-api/thread-automation?threadId=${encodeURIComponent(threadId)}`, {
+export async function deleteThreadAutomation(threadId: string, automationId?: string): Promise<void> {
+  const query = new URLSearchParams({ threadId })
+  if (automationId) query.set('automationId', automationId)
+  const response = await fetch(`/codex-api/thread-automation?${query.toString()}`, {
     method: 'DELETE',
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(extractErrorMessage(payload, 'Failed to delete thread automation'))
+  }
+}
+
+export async function runThreadAutomationNow(threadId: string, automationId: string): Promise<void> {
+  const response = await fetch('/codex-api/thread-automation/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ threadId, automationId }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(extractErrorMessage(payload, 'Failed to run thread automation'))
   }
 }
 
@@ -2370,6 +2419,23 @@ function normalizeThreadQueueState(value: unknown): ThreadQueueState {
 }
 
 export async function getWorkspaceRootsState(): Promise<WorkspaceRootsState> {
+  if (cachedWorkspaceRootsState) {
+    return cloneWorkspaceRootsState(cachedWorkspaceRootsState)
+  }
+  if (!workspaceRootsStatePromise) {
+    workspaceRootsStatePromise = fetchWorkspaceRootsState()
+      .then((state) => {
+        cachedWorkspaceRootsState = state
+        return state
+      })
+      .finally(() => {
+        workspaceRootsStatePromise = null
+      })
+  }
+  return cloneWorkspaceRootsState(await workspaceRootsStatePromise)
+}
+
+async function fetchWorkspaceRootsState(): Promise<WorkspaceRootsState> {
   const response = await fetch('/codex-api/workspace-roots-state')
   const payload = (await response.json()) as unknown
   if (!response.ok) {
@@ -2380,6 +2446,20 @@ export async function getWorkspaceRootsState(): Promise<WorkspaceRootsState> {
       ? (payload as Record<string, unknown>)
       : {}
   return normalizeWorkspaceRootsState(envelope.data)
+}
+
+function cloneWorkspaceRootsState(state: WorkspaceRootsState): WorkspaceRootsState {
+  return {
+    order: [...state.order],
+    labels: { ...state.labels },
+    active: [...state.active],
+    projectOrder: [...state.projectOrder],
+    remoteProjects: state.remoteProjects?.map((item) => ({ ...item })) ?? [],
+  }
+}
+
+function invalidateWorkspaceRootsStateCache(): void {
+  cachedWorkspaceRootsState = null
 }
 
 export async function getThreadQueueState(): Promise<ThreadQueueState> {
@@ -2759,6 +2839,7 @@ export async function setWorkspaceRootsState(nextState: WorkspaceRootsState): Pr
   if (!response.ok) {
     throw new Error('Failed to save workspace roots state')
   }
+  cachedWorkspaceRootsState = cloneWorkspaceRootsState(nextState)
 }
 
 export async function openProjectRoot(path: string, options?: { createIfMissing?: boolean; label?: string }): Promise<string> {
@@ -2785,6 +2866,7 @@ export async function openProjectRoot(path: string, options?: { createIfMissing?
       ? (record.data as Record<string, unknown>)
       : {}
   const normalizedPath = typeof data.path === 'string' ? normalizePathForUi(data.path) : ''
+  invalidateWorkspaceRootsStateCache()
   return normalizedPath
 }
 

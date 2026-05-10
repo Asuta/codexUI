@@ -230,7 +230,24 @@
                 </span>
               </div>
 
+              <div v-if="message.skills && message.skills.length > 0" class="message-skill-attachments">
+                <a
+                  v-for="skill in message.skills"
+                  :key="`${message.id}:${skill.path}`"
+                  class="message-skill-chip"
+                  :href="toBrowseUrl(skill.path)"
+                  :title="skill.path"
+                >
+                  <span class="message-skill-chip-prefix">Skill</span>
+                  <span class="message-skill-chip-name">{{ skill.name }}</span>
+                </a>
+              </div>
+
               <article v-if="message.text.length > 0" class="message-card" :data-role="message.role">
+                <div v-if="message.isAutomationRun" class="automation-message-label">
+                  <span>Sent via automation</span>
+                  <code v-if="message.automationDisplayName">{{ message.automationDisplayName }}</code>
+                </div>
                 <div v-if="message.messageType === 'worked'" class="worked-separator-wrap" aria-live="polite">
                   <button type="button" class="worked-separator" @click="toggleWorkedExpand(message)">
                     <span class="worked-separator-line" aria-hidden="true" />
@@ -2448,118 +2465,125 @@ function splitTextByFileUrls(text: string): InlineSegment[] {
 }
 
 function parseInlineSegmentsUncached(text: string): InlineSegment[] {
-  if (text.includes('](')) {
-    const linkFirstSegments = splitTextByFileUrls(text)
-    if (linkFirstSegments.some((segment) => segment.kind === 'file' || segment.kind === 'url') && !text.includes('`')) {
-      return linkFirstSegments
-    }
+  const linkFirstSegments = splitTextByFileUrls(text)
+  if (!text.includes('`')) return linkFirstSegments
+  if (!linkFirstSegments.some((segment) => segment.kind === 'text' && segment.value.includes('`'))) {
+    return linkFirstSegments
   }
 
-  if (!text.includes('`')) return splitTextByFileUrls(text)
+  const parseCodeAwareTextSegments = (value: string): InlineSegment[] => {
+    if (!value.includes('`')) return splitPlainTextByLinks(value)
 
-  const segments: InlineSegment[] = []
-  let cursor = 0
-  let textStart = 0
+    const segments: InlineSegment[] = []
+    let cursor = 0
+    let textStart = 0
 
-  while (cursor < text.length) {
-    if (text[cursor] !== '`') {
-      cursor += 1
-      continue
-    }
-
-    let openLength = 1
-    while (cursor + openLength < text.length && text[cursor + openLength] === '`') {
-      openLength += 1
-    }
-    const delimiter = '`'.repeat(openLength)
-
-    let searchFrom = cursor + openLength
-    let closingStart = -1
-    while (searchFrom < text.length) {
-      const candidate = text.indexOf(delimiter, searchFrom)
-      if (candidate < 0) break
-
-      const hasBacktickBefore = candidate > 0 && text[candidate - 1] === '`'
-      const hasBacktickAfter =
-        candidate + openLength < text.length && text[candidate + openLength] === '`'
-      const hasNewLineInside = text.slice(cursor + openLength, candidate).includes('\n')
-
-      if (!hasBacktickBefore && !hasBacktickAfter && !hasNewLineInside) {
-        closingStart = candidate
-        break
+    while (cursor < value.length) {
+      if (value[cursor] !== '`') {
+        cursor += 1
+        continue
       }
-      searchFrom = candidate + 1
-    }
 
-    if (closingStart < 0) {
-      cursor += openLength
-      continue
-    }
+      let openLength = 1
+      while (cursor + openLength < value.length && value[cursor + openLength] === '`') {
+        openLength += 1
+      }
+      const delimiter = '`'.repeat(openLength)
 
-    if (cursor > textStart) {
-      segments.push(...splitTextByFileUrls(text.slice(textStart, cursor)))
-    }
+      let searchFrom = cursor + openLength
+      let closingStart = -1
+      while (searchFrom < value.length) {
+        const candidate = value.indexOf(delimiter, searchFrom)
+        if (candidate < 0) break
 
-    const token = text.slice(cursor + openLength, closingStart)
-    if (token.length > 0) {
-      const markdownLink = parseMarkdownLinkToken(token)
-      if (markdownLink) {
-        if (/^https?:\/\//u.test(markdownLink.target)) {
+        const hasBacktickBefore = candidate > 0 && value[candidate - 1] === '`'
+        const hasBacktickAfter =
+          candidate + openLength < value.length && value[candidate + openLength] === '`'
+        const hasNewLineInside = value.slice(cursor + openLength, candidate).includes('\n')
+
+        if (!hasBacktickBefore && !hasBacktickAfter && !hasNewLineInside) {
+          closingStart = candidate
+          break
+        }
+        searchFrom = candidate + 1
+      }
+
+      if (closingStart < 0) {
+        cursor += openLength
+        continue
+      }
+
+      if (cursor > textStart) {
+        segments.push(...splitPlainTextByLinks(value.slice(textStart, cursor)))
+      }
+
+      const token = value.slice(cursor + openLength, closingStart)
+      if (token.length > 0) {
+        const markdownLink = parseMarkdownLinkToken(token)
+        if (markdownLink) {
+          if (/^https?:\/\//u.test(markdownLink.target)) {
+            segments.push({
+              kind: 'url',
+              value: markdownLink.label || markdownLink.target,
+              href: markdownLink.target,
+            })
+          } else {
+            const markdownFileReference = parseFileReference(markdownLink.target)
+            if (markdownFileReference) {
+              segments.push({
+                kind: 'file',
+                value: markdownLink.target,
+                path: markdownFileReference.path,
+                displayPath: markdownLink.label || markdownLink.target,
+                downloadName: getBasename(markdownFileReference.path),
+              })
+            } else {
+              segments.push({ kind: 'code', value: token })
+            }
+          }
+        } else if (/^https?:\/\/[^\s]+$/u.test(token)) {
           segments.push({
             kind: 'url',
-            value: markdownLink.label || markdownLink.target,
-            href: markdownLink.target,
+            value: token,
+            href: token,
           })
         } else {
-          const markdownFileReference = parseFileReference(markdownLink.target)
-          if (markdownFileReference) {
+          const fileReference = parseFileReference(token)
+          if (fileReference) {
+            const displayPath = fileReference.line
+              ? `${fileReference.path}:${String(fileReference.line)}`
+              : fileReference.path
             segments.push({
               kind: 'file',
-              value: markdownLink.target,
-              path: markdownFileReference.path,
-              displayPath: markdownLink.label || markdownLink.target,
-              downloadName: getBasename(markdownFileReference.path),
+              value: token,
+              path: fileReference.path,
+              displayPath,
+              downloadName: getBasename(fileReference.path),
             })
           } else {
             segments.push({ kind: 'code', value: token })
           }
         }
-      } else if (/^https?:\/\/[^\s]+$/u.test(token)) {
-        segments.push({
-          kind: 'url',
-          value: token,
-          href: token,
-        })
       } else {
-        const fileReference = parseFileReference(token)
-        if (fileReference) {
-          const displayPath = fileReference.line
-            ? `${fileReference.path}:${String(fileReference.line)}`
-            : fileReference.path
-          segments.push({
-            kind: 'file',
-            value: token,
-            path: fileReference.path,
-            displayPath,
-            downloadName: getBasename(fileReference.path),
-          })
-        } else {
-          segments.push({ kind: 'code', value: token })
-        }
+        segments.push({ kind: 'text', value: `${delimiter}${delimiter}` })
       }
-    } else {
-      segments.push({ kind: 'text', value: `${delimiter}${delimiter}` })
+
+      cursor = closingStart + openLength
+      textStart = cursor
     }
 
-    cursor = closingStart + openLength
-    textStart = cursor
+    if (textStart < value.length) {
+      segments.push(...splitPlainTextByLinks(value.slice(textStart)))
+    }
+
+    return segments
   }
 
-  if (textStart < text.length) {
-    segments.push(...splitTextByFileUrls(text.slice(textStart)))
-  }
-
-  return segments
+  return linkFirstSegments.flatMap((segment) => (
+    segment.kind === 'text'
+      ? parseCodeAwareTextSegments(segment.value)
+      : [segment]
+  ))
 }
 
 function getInlineSegments(text: string): InlineSegment[] {
@@ -4492,8 +4516,24 @@ onBeforeUnmount(() => {
   @apply mb-2 flex flex-wrap gap-1.5;
 }
 
+.message-skill-attachments {
+  @apply mb-2 flex flex-wrap justify-end gap-1.5;
+}
+
 .message-file-chip {
   @apply inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-700;
+}
+
+.message-skill-chip {
+  @apply inline-flex max-w-full items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800 no-underline transition hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-900;
+}
+
+.message-skill-chip-prefix {
+  @apply shrink-0 font-medium text-emerald-700;
+}
+
+.message-skill-chip-name {
+  @apply min-w-0 max-w-48 truncate font-mono;
 }
 
 .message-file-chip-icon {
@@ -4856,9 +4896,29 @@ onBeforeUnmount(() => {
   align-self: flex-end;
 }
 
+.automation-message-label {
+  @apply mb-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500;
+}
+
+.automation-message-label code {
+  @apply rounded-full bg-white/70 px-2 py-0.5 text-[10px] normal-case tracking-normal text-slate-600;
+}
+
 .message-card[data-role='assistant'],
 .message-card[data-role='system'] {
   @apply px-0 py-0 bg-transparent border-none rounded-none;
+}
+
+:global(.dark) .message-file-chip {
+  @apply border-zinc-700 bg-zinc-900 text-zinc-200;
+}
+
+:global(.dark) .message-skill-chip {
+  @apply border-emerald-800/70 bg-emerald-950/50 text-emerald-100;
+}
+
+:global(.dark) .message-skill-chip-prefix {
+  @apply text-emerald-300;
 }
 
 .conversation-item[data-message-type='worked'] .message-stack,

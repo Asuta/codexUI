@@ -204,6 +204,10 @@ function normalizeProviderContextId(providerId: string): string {
   return normalized || 'codex'
 }
 
+function isNewThreadContextId(contextId: string): boolean {
+  return contextId === NEW_THREAD_COLLABORATION_MODE_CONTEXT
+}
+
 function toProviderModelContextId(providerId: string): string {
   const normalizedProviderId = normalizeProviderContextId(providerId)
   if (!normalizedProviderId) return ''
@@ -295,12 +299,7 @@ function loadSelectedCollaborationModeMap(): Record<string, CollaborationModeKin
     // Fall back to the legacy global preference below.
   }
 
-  const legacyMode = normalizeCollaborationMode(window.localStorage.getItem(LEGACY_COLLABORATION_MODE_STORAGE_KEY))
-  const next = createStringKeyedRecord<CollaborationModeKind>()
-  if (legacyMode === 'plan') {
-    next[NEW_THREAD_COLLABORATION_MODE_CONTEXT] = 'plan'
-  }
-  return next
+  return createStringKeyedRecord<CollaborationModeKind>()
 }
 
 function readSelectedCollaborationMode(
@@ -317,6 +316,9 @@ function writeSelectedCollaborationModeForContext(
   mode: CollaborationModeKind,
 ): Record<string, CollaborationModeKind> {
   const contextId = toThreadContextId(threadId)
+  if (isNewThreadContextId(contextId)) {
+    return omitStringKeyedRecordKey(state, contextId)
+  }
   if (mode === 'plan') {
     const next = cloneStringKeyedRecord(state)
     next[contextId] = 'plan'
@@ -924,6 +926,29 @@ function pruneThreadStateMap<T>(stateMap: Record<string, T>, threadIds: Set<stri
   return Object.fromEntries(nextEntries) as Record<string, T>
 }
 
+export function removeThreadFromGroups(groups: UiProjectGroup[], threadId: string): UiProjectGroup[] {
+  const normalizedThreadId = threadId.trim()
+  if (!normalizedThreadId) return groups
+
+  let changed = false
+  const nextGroups: UiProjectGroup[] = []
+
+  for (const group of groups) {
+    const nextThreads = group.threads.filter((thread) => thread.id !== normalizedThreadId)
+    const removedFromGroup = nextThreads.length !== group.threads.length
+    if (removedFromGroup) {
+      changed = true
+    }
+    if (nextThreads.length > 0) {
+      nextGroups.push(removedFromGroup ? { ...group, threads: nextThreads } : group)
+    } else if (group.threads.length === 0) {
+      nextGroups.push(group)
+    }
+  }
+
+  return changed ? nextGroups : groups
+}
+
 function mergeThreadGroups(
   previous: UiProjectGroup[],
   incoming: UiProjectGroup[],
@@ -1400,6 +1425,7 @@ export function useDesktopState() {
 
   const isLoadingThreads = ref(false)
   const isLoadingMessages = ref(false)
+  const isThreadListFullyLoaded = ref(false)
   const isSendingMessage = ref(false)
   const isInterruptingTurn = ref(false)
   const isUpdatingSpeedMode = ref(false)
@@ -4055,7 +4081,7 @@ export function useDesktopState() {
     }
     const filteredGroups = groupsWithWorkspaceRoots.filter((group) => {
       if (allowedProjectNames.has(group.projectName)) return true
-      return group.threads.some((thread) => isProjectlessChatPath(thread.cwd))
+      return isProjectlessGroup(group)
     })
     return orderGroupsByWorkspaceProjectOrder(filteredGroups, rootsState, duplicateLeafNames)
   }
@@ -4131,6 +4157,13 @@ export function useDesktopState() {
     }
   }
 
+  function removeArchivedThreadFromLoadedLists(threadId: string): void {
+    loadedThreadListGroups = removeThreadFromGroups(loadedThreadListGroups, threadId)
+    sourceGroups.value = removeThreadFromGroups(sourceGroups.value, threadId)
+    inProgressById.value = omitKey(inProgressById.value, threadId)
+    applyThreadFlags()
+  }
+
   function mergeThreadGroupPages(previous: UiProjectGroup[], incoming: UiProjectGroup[]): UiProjectGroup[] {
     if (previous.length === 0) return incoming
     if (incoming.length === 0) return previous
@@ -4196,6 +4229,7 @@ export function useDesktopState() {
       const page = await getThreadGroupsPage(threadListNextCursor, getBackgroundThreadListLimit())
       threadListNextCursor = page.nextCursor
       hasLoadedAllThreadPages = page.nextCursor === null
+      isThreadListFullyLoaded.value = hasLoadedAllThreadPages
       loadedThreadListGroups = mergeThreadGroupPages(loadedThreadListGroups, page.groups)
       applyThreadGroups(loadedThreadListGroups, rootsState)
     } catch {
@@ -4234,6 +4268,7 @@ export function useDesktopState() {
         ? threadListNextCursor
         : page.nextCursor
       hasLoadedAllThreadPages = page.nextCursor === null
+      isThreadListFullyLoaded.value = hasLoadedAllThreadPages
       await hydrateWorkspaceRootsStateIfNeeded(groups, rootsState)
 
       applyThreadGroups(loadedThreadListGroups, rootsState)
@@ -4511,6 +4546,7 @@ export function useDesktopState() {
 
     try {
       await archiveThread(threadId)
+      removeArchivedThreadFromLoadedLists(threadId)
       await loadThreads()
 
       if (wasSelectedThread && nextSelectedThreadId && selectedThreadId.value === nextSelectedThreadId) {
@@ -4790,10 +4826,7 @@ export function useDesktopState() {
     const nextText = text.trim()
     const targetCwd = cwd.trim()
     const selectedModel = readModelIdForThread(NEW_THREAD_COLLABORATION_MODE_CONTEXT).trim()
-    const selectedMode = readSelectedCollaborationMode(
-      selectedCollaborationModeByContext.value,
-      NEW_THREAD_COLLABORATION_MODE_CONTEXT,
-    )
+    const selectedMode = selectedCollaborationMode.value
     if (!nextText && imageUrls.length === 0 && fileAttachments.length === 0) return ''
 
     isSendingMessage.value = true
@@ -5514,6 +5547,7 @@ export function useDesktopState() {
     selectedThreadCanLoadOlderMessages,
     selectedThreadIsLoadingOlderMessages,
     isLoadingThreads,
+    isThreadListFullyLoaded,
     isLoadingMessages,
     isSendingMessage,
     isInterruptingTurn,

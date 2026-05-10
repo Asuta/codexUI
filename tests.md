@@ -25,23 +25,37 @@ This file tracks manual regression and feature verification steps.
 - App is running from this repository.
 - At least one local thread exists in the sidebar.
 - Local Codex home is writable (`$CODEX_HOME` or `~/.codex`).
+- Light and dark themes are both available from Settings.
 
 #### Steps
-1. Open the sidebar thread menu for a thread without an attached automation.
+1. In light theme, open the sidebar thread menu for a thread without an attached automation.
 2. Confirm the menu shows `Add automation…`.
 3. Click `Add automation…`.
 4. Fill name, prompt, RRULE schedule, and set status to `Paused`.
 5. Save the automation and reopen the same thread menu.
-6. Confirm the menu now shows `Edit automation…` and the thread row shows an automation chip.
-7. Open `Edit automation…`, confirm the saved values are prefilled, then remove the automation.
+6. Confirm the menu now shows `Manage automations…` and the thread row shows an automation chip.
+7. Open `Manage automations…`, confirm the saved values are prefilled, then click `Add another automation`.
+8. Fill a second automation with a different name and RRULE, save it, and confirm both automations appear in the dialog list.
+9. Select each automation from the list and confirm its own prompt, RRULE, and status load independently.
+10. Click `Run now` for one saved automation while the thread is idle and confirm the automation run is queued or starts in the selected thread.
+11. Start a normal thread turn, reopen `Manage automations…`, click `Run now` for another saved automation, and confirm it waits in the queue until the active turn can finish.
+12. Remove one automation and confirm the other remains attached to the same thread.
+13. Switch to dark theme, reopen `Manage automations…`, and confirm the list, inputs, textarea, status select, `Run now`, and queued-run notice remain readable.
+14. Select a thread that already contains automation runs and confirm both the automation prompt card and the assistant reply are visible.
+15. Remove the final automation and confirm the thread menu returns to `Add automation…`.
 
 #### Expected Results
-- Thread-scoped heartbeat automations are created under the Codex automations store and attached by `target_thread_id`.
-- The automation editor is hosted from the thread menu and uses Codex.app wording.
-- Removing the automation removes the thread row automation chip and returns the menu to `Add automation…`.
+- Multiple thread-scoped heartbeat automations can be created under the Codex automations store with the same `target_thread_id`.
+- The automation manager is hosted from the thread menu and supports adding, selecting, editing, and removing individual automations.
+- `Run now` enqueues the selected automation immediately using a Codex.app-style heartbeat payload with `automation_id`, `current_time_iso`, and `instructions`, without requiring a schedule tick.
+- Automation heartbeat prompts render as visible user-side cards labeled `Sent via automation`; raw heartbeat XML is not shown.
+- Manual runs use the existing thread queue, so they do not interrupt an active turn and run in order when the thread is available.
+- Removing one automation does not remove other automations attached to the same thread.
+- Removing the final automation removes the thread row automation chip and returns the menu to `Add automation…`.
+- Light and dark theme automation manager surfaces remain readable.
 
 #### Rollback/Cleanup
-- Remove any test automation from the thread automation dialog or delete its folder under `$CODEX_HOME/automations/<automation-id>/`.
+- Remove any test automations from the thread automation dialog or delete their folders under `$CODEX_HOME/automations/<automation-id>/`.
 
 ### Feature: Projectless new chat folders
 
@@ -254,6 +268,9 @@ Unread thread state uses a local cutoff timestamp so existing threads are not al
 
 #### Rollback/Cleanup
 - Remove any disposable test threads created for this validation.
+
+---
+
 ### CLI password output redaction
 
 #### Feature/Change Name
@@ -280,6 +297,38 @@ CLI startup output no longer prints the configured password or embeds it in the 
 
 #### Rollback/Cleanup
 - Stop the disposable CLI process.
+
+---
+
+### Composer skill chip opens SKILL.md
+
+#### Feature/Change Name
+Selected skill labels in the thread composer open that skill's `SKILL.md` in the web file browser.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. At least one installed skill is available in the composer skill picker
+3. Browser pop-ups from the local dev origin are allowed
+4. Light theme and dark theme are available from the appearance switcher
+
+#### Steps
+1. In light theme, open any thread with the composer enabled.
+2. Open the `Skills` picker and select an installed skill.
+3. Confirm the selected skill appears as a green chip above the input field.
+4. Click the skill name on the green chip.
+5. Confirm a new tab opens to `/codex-local-browse.../SKILL.md` for that skill.
+6. Return to the composer and click the chip `x`.
+7. Confirm the skill is removed and no file-browser tab is opened by the remove action.
+8. Switch to dark theme and repeat steps 2 through 7.
+
+#### Expected Results
+- The skill chip label is clickable and opens the selected skill's `SKILL.md` in the web file browser.
+- Skill paths that point at a skill directory are normalized to the nested `SKILL.md` file.
+- The remove button still only removes the skill from the composer.
+- The chip and focus/hover states remain readable in light theme and dark theme.
+
+#### Rollback/Cleanup
+- Close any file-browser tabs opened during validation.
 
 ---
 
@@ -495,26 +544,30 @@ Model, skill, thinking, and plan controls remain usable while a thread turn is i
 #### Rollback/Cleanup
 - Reset appearance to the previous user preference.
 
-### Feature: Markdown file links with backticks and parentheses render correctly
+### Feature: Markdown file links with backticked filename labels render correctly
 
 #### Prerequisites
 - App is running from this repository.
 - An active thread is open.
-- Local file exists at `/root/New Project (1)/qwe.txt`.
+- Light and dark themes are both available.
+- Local file exists at `/home/ubuntu/andClaw-srcmatch/app/src/main/java/com/coderred/andclaw/ui/util/TrustedBrowserLauncher.kt`.
 
 #### Steps
-1. Send a message containing: `Done. Created [`/root/New Project (1)/qwe.txt`](/root/New Project (1)/qwe.txt) with content:`.
-2. In the rendered assistant message, click the `/root/New Project (1)/qwe.txt` link.
-3. Right-click the same link and choose `Copy link` from the context menu.
-4. Paste the copied link into a text field and inspect it.
+1. In light theme, send a message containing: `Added [`TrustedBrowserLauncher.kt`](/home/ubuntu/andClaw-srcmatch/app/src/main/java/com/coderred/andclaw/ui/util/TrustedBrowserLauncher.kt)`.
+2. Confirm the rendered message shows one clickable file link with visible text `TrustedBrowserLauncher.kt`.
+3. Click the link and confirm it opens local browse for `/home/ubuntu/andClaw-srcmatch/app/src/main/java/com/coderred/andclaw/ui/util/TrustedBrowserLauncher.kt`.
+4. Right-click the same link and choose `Copy link`, then paste it into a text field and inspect it.
+5. Switch to dark theme and repeat steps 1-4.
 
 #### Expected Results
-- The markdown link renders as one clickable file link (not split into partial tokens).
+- The markdown link renders as one clickable file link instead of splitting around backticks.
+- The visible link text is the markdown label `TrustedBrowserLauncher.kt`, without backtick glyphs.
 - Clicking opens the local browse route for the full file path.
 - Copied link includes the full encoded path and still resolves to the same file.
+- Light and dark theme message surfaces keep the link readable and styled consistently.
 
 #### Rollback/Cleanup
-- Delete `/root/New Project (1)/qwe.txt` if it was created only for this test.
+- No cleanup required.
 
 ### Feature: Deferred ancillary startup refreshes
 
@@ -1321,6 +1374,32 @@ Model, skill, thinking, and plan controls remain usable while a thread turn is i
 
 #### Rollback/Cleanup
 - If needed, run another sync pull/push to restore previous skill state in the sync repo.
+
+### Feature: Public shared skills pull overwrites local files
+
+#### Prerequisites
+- App running from this repository with Skills Hub available.
+- GitHub skills sync is either not configured, or it targets the public `OpenClawAndroid/skills` repository.
+- Local skills directory exists at `~/.codex/skills`.
+
+#### Steps
+1. Create a temporary local-only skill folder under `~/.codex/skills`, or edit a tracked file in that directory.
+2. Open `Skills Hub`.
+3. Trigger `Pull` from the `Skills Sync (GitHub)` panel.
+4. Wait for the pull success toast.
+5. Inspect `~/.codex/skills` and compare it with the configured public upstream branch.
+6. In light theme, verify the Skills Hub list reloads and does not show stale local-only skills.
+7. Switch to dark theme and verify the same Skills Hub state remains readable and current.
+
+#### Expected Results
+- Public upstream pull resets the local skills repo to the upstream branch.
+- Local uncommitted edits and local-only untracked skill folders are removed by the pull.
+- The installed skills list reloads immediately after the pull in both light and dark theme.
+- Private GitHub sync repos still preserve local edits through the bidirectional sync path.
+
+#### Rollback/Cleanup
+- Recreate any intentionally removed local-only test skill if it should be kept.
+- Use private sync `Push` only after confirming the public pull result should be mirrored elsewhere.
 
 ### Feature: Force Refresh Skills button in Skills Sync panel
 
@@ -3295,23 +3374,21 @@ Each local/worktree thread has an integrated xterm terminal that can be toggled 
 8. Confirm `terminal-ok` appears in the xterm output
 9. Choose `npm run dev` from the `Run...` quick-command menu
 10. Confirm the command is submitted to the active terminal
-11. Choose `Add command...` from the `Run...` menu
-12. Enter a custom command in the prompt and confirm it runs immediately
-13. Fetch `/codex-api/thread-terminal-snapshot?threadId=<thread-id>`
-14. Confirm the JSON `session.buffer` contains `terminal-ok`
-15. Refresh the page and reopen the same thread
-16. Toggle the terminal open again
-17. Click `New`
-18. Confirm a second terminal tab appears and becomes active
-19. Click the first terminal tab
-20. Confirm its previous output is restored
-21. Resize the browser window
-22. Click `Close`
-23. Open the new-chat screen
-24. Confirm a working folder is selected
-25. Click the terminal button in the top-right header
-26. Confirm the terminal opens below the new-chat composer before a thread exists
-27. Run `pwd` and confirm it matches the selected folder
+11. Fetch `/codex-api/thread-terminal-snapshot?threadId=<thread-id>`
+12. Confirm the JSON `session.buffer` contains `terminal-ok`
+13. Refresh the page and reopen the same thread
+14. Toggle the terminal open again
+15. Click `New`
+16. Confirm a second terminal tab appears and becomes active
+17. Click the first terminal tab
+18. Confirm its previous output is restored
+19. Resize the browser window
+20. Click `Close`
+21. Open the new-chat screen
+22. Confirm a working folder is selected
+23. Click the terminal button in the top-right header
+24. Confirm the terminal opens below the new-chat composer before a thread exists
+25. Run `pwd` and confirm it matches the selected folder
 
 #### Expected Results
 - The terminal button shows a pressed state when the drawer is open
@@ -3322,8 +3399,8 @@ Each local/worktree thread has an integrated xterm terminal that can be toggled 
 - The terminal resizes without clipping the prompt
 - The snapshot endpoint returns `{ session: { cwd, shell, buffer, truncated } }` while a session exists
 - The quick-command menu sends common project commands such as `npm run dev` into the current PTY
-- Custom quick commands can be added from the `Run...` menu prompt and run immediately
-- The `Run...` menu shows only the five most-used/recent commands before `Add command...`
+- The terminal open/hide action is the first item in the `Run...` menu
+- The `Run...` menu shows discovered project commands in usage order and scrolls when the list is longer than the visible menu
 - `New` adds another tab without killing the previous PTY
 - `Close` terminates the active PTY and hides the drawer only after the last tab is closed
 
@@ -4122,7 +4199,7 @@ The thread overflow menu includes a `Copy path` item that copies the selected th
 5. Reopen the same menu in dark theme and verify the item remains readable and in the same position
 
 #### Expected Results
-- The menu order is `Add automation...`, `Browse files`, `Copy path`, `Export chat`, `Create chat fork`, `Rename thread`, `Delete thread`
+- The menu order is `Add automation...` or `Manage automations...`, `Browse files`, `Copy path`, `Export chat`, `Create chat fork`, `Rename thread`, `Delete thread`
 - Clicking `Copy path` closes the menu
 - Clipboard contents equal the thread's `cwd` path
 - Light theme and dark theme both keep the menu item readable
@@ -4152,8 +4229,9 @@ Terminal quick commands are discovered from the current project instead of using
 5. Verify root-level `*.sh` / `*.cmd` files appear as `./<file>`
 6. Verify `scripts/*.sh` and `scripts/*.cmd` files appear as `./scripts/<file>`
 7. Select one discovered command and confirm it is sent to the terminal
-8. Use `Add command...` to add a custom command
-9. Reopen the dropdown after running commands multiple times
+8. Reopen the dropdown after running commands multiple times
+9. If the project has more commands than fit in the menu, scroll the dropdown and verify lower-priority entries such as `./scripts/<file>.sh` remain reachable
+10. From a closed terminal state on a remote server, select a command immediately after opening the `Run...` menu and confirm it runs after the terminal attaches
 
 #### Expected Results
 - The dropdown is based on the current project `cwd`
@@ -4161,12 +4239,11 @@ Terminal quick commands are discovered from the current project instead of using
 - Package script commands use the lockfile-preferred package manager
 - Make targets are listed after package scripts
 - Root and `scripts/` script-file commands are listed after Make targets
-- Only the top five commands are shown, sorted by most-used and then most-recent usage
-- Custom commands still work and are included in the same usage sorting
+- Commands are sorted by most-used and then most-recent usage, and the dropdown scrolls instead of hiding entries beyond the first five
+- Selecting a command while the terminal is still mounting waits for the attach flow instead of dropping the command
 
 #### Rollback/Cleanup
 - Remove any temporary files created under the project root or `scripts/`
-- Remove custom quick commands from browser local storage if needed
 
 ---
 
@@ -4636,6 +4713,107 @@ Managed worktree threads remain visible under their matching canonical workspace
 - The canonical `codex-web-local` project shows both main-root and worktree threads.
 - Path-like project tooltips expose the full project path.
 - Project rows and worktree icons remain readable in light and dark themes.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
+### Worktree creation persists across refresh
+
+#### Feature/Change Name
+Newly created temporary and permanent worktrees are persisted in workspace roots so their threads remain visible after a full browser refresh.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. A Git-backed workspace root is registered and selected in the Start new thread screen
+3. Light theme and dark theme both available from the appearance switcher
+
+#### Steps
+1. In light theme, open Start new thread for the Git-backed workspace root.
+2. Select `New worktree`, send a unique first prompt, and wait for the thread page to open.
+3. Note the created worktree path from the selected folder or thread metadata.
+4. Refresh the browser tab.
+5. Confirm the new worktree-backed project/thread remains visible in the sidebar and can be opened.
+6. Open the project action menu for the original Git-backed project and create a permanent named worktree.
+7. Confirm the permanent worktree appears in the folder/project list, then refresh the browser tab.
+8. Confirm the permanent worktree remains visible after refresh.
+9. Switch to dark theme and repeat steps 1 through 5 with a second unique temporary worktree prompt.
+
+#### Expected Results
+- Temporary worktree creation writes the new worktree cwd to persisted workspace roots.
+- Permanent worktree creation writes the new worktree cwd to persisted workspace roots.
+- Full page refresh does not hide the newly created worktree project or its thread.
+- The same behavior works in light theme and dark theme.
+- If workspace-root persistence fails after `git worktree add`, the request fails cleanly and best-effort rollback removes the created worktree instead of leaving retry-prone orphaned worktrees.
+
+#### Rollback/Cleanup
+- Remove temporary test worktrees with `git worktree remove --force <worktree-path>`.
+- Delete any empty temporary parent directory left under `$CODEX_HOME/worktrees/<id>`.
+- Remove permanent test worktrees with `git worktree remove --force <worktree-path>` and delete their test branch if needed.
+
+---
+
+### Selective upstream feature sync from friuns2/codexui
+
+#### Feature/Change Name
+Selective import of upstream thread automations, selected skill chips, pinned thread hydration, lazy project Git checks, archive recovery, worktree persistence, and OpenCode Zen proxy fixes.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. At least one existing thread with a selectable skill available
+3. At least one projectless chat and one Git-backed project in the sidebar
+4. Light theme and dark theme both available from the appearance switcher
+
+#### Steps
+1. In light theme, send a message with a selected skill, refresh the thread, and confirm the sent user message still shows the selected skill chip.
+2. Click the skill chip and confirm the local `SKILL.md` opens through the file browser flow.
+3. Pin a thread, load or paginate the sidebar, and confirm the pinned row remains visible even if the normal list page does not currently include it.
+4. Open a project action menu and confirm Git-backed-only actions appear after the menu requests project Git status.
+5. Open a thread menu, add two automations, edit one, delete one, and confirm the other remains.
+6. Click `Run now` for an automation on an idle thread and confirm a readable `Sent via automation` prompt card appears instead of raw heartbeat XML.
+7. Repeat the automation manager and pinned-thread checks in dark theme.
+8. Start a new thread in Plan mode, then open an existing thread and confirm the existing thread does not inherit Plan mode unless it was explicitly set there.
+9. If OpenCode Zen/Big Pickle is configured, send a thinking/tool-call prompt through the local proxy and confirm reasoning content is preserved across the tool-call round trip.
+
+#### Expected Results
+- Selected skill chips survive session-history recovery and remain clickable.
+- Project Git status is requested lazily from the project menu instead of blocking initial sidebar load.
+- Pinned threads remain visible during paged thread hydration.
+- Thread automations support multiple records per thread, schedule presets, independent edit/delete, and manual `Run now`.
+- Automation prompt cards render as readable user-side cards in both light and dark themes.
+- Archive/delete recovery removes archived threads from loaded sidebar state without stale rows.
+- OpenCode Zen reasoning content is preserved for thinking-mode proxy calls.
+
+#### Rollback/Cleanup
+- Delete any test automations created for disposable threads.
+- Unpin any temporary pinned threads.
+- Remove disposable test threads/worktrees created during validation.
+
+---
+
+### Skills startup sync handles Windows symlink denial
+
+#### Feature/Change Name
+Skills startup sync falls back to a normal `AGENTS.md` file when Windows denies symlink creation.
+
+#### Prerequisites/Setup
+1. Windows environment without elevated symlink permission, or a test shell where `symlink('skills/AGENTS.md', '<CODEX_HOME>/AGENTS.md')` fails with `EPERM`.
+2. Dev server running (`pnpm run dev --host 127.0.0.1 --port 4173`).
+3. Skills Hub route available at `#/skills`.
+
+#### Steps
+1. Start the dev server in light theme and open `http://127.0.0.1:4173/#/skills`.
+2. Wait for the Skills Sync status panel to render.
+3. Confirm the page does not show a startup-sync failure containing `EPERM: operation not permitted, symlink`.
+4. Confirm `~/.codex/AGENTS.md` exists as either a symlink or a regular file with the same content copied from `~/.codex/skills/AGENTS.md`.
+5. Switch to dark theme and reload `#/skills`.
+6. Confirm the Skills Sync panel remains readable and no symlink error appears.
+
+#### Expected Results
+- Startup sync does not fail only because Windows cannot create the symlink.
+- When symlink creation is denied, CodexUI writes a regular fallback `AGENTS.md` file.
+- Skills Hub remains usable in both light and dark themes.
 
 #### Rollback/Cleanup
 - None.
