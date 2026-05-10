@@ -56,3 +56,4 @@
 ## 2026-05-10
 
 - Added project cron automation notes for sidebar project-level automation management.
+- Updated project cron automation notes for the combined Automations panel.
