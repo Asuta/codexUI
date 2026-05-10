@@ -1318,7 +1318,11 @@ async function ensureCodexAgentsSymlinkToSkillsAgents(): Promise<void> {
     }
     await rm(codexAgentsPath, { force: true, recursive: true })
   } catch {}
-  await symlink(relativeTarget, codexAgentsPath)
+  try {
+    await symlink(relativeTarget, codexAgentsPath)
+  } catch {
+    await writeFile(codexAgentsPath, await readFile(skillsAgentsPath, 'utf8'), 'utf8')
+  }
 }
 
 async function runSkillsSyncStartup(appServer: AppServerLike): Promise<void> {

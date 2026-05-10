@@ -4789,3 +4789,31 @@ Selective import of upstream thread automations, selected skill chips, pinned th
 - Delete any test automations created for disposable threads.
 - Unpin any temporary pinned threads.
 - Remove disposable test threads/worktrees created during validation.
+
+---
+
+### Skills startup sync handles Windows symlink denial
+
+#### Feature/Change Name
+Skills startup sync falls back to a normal `AGENTS.md` file when Windows denies symlink creation.
+
+#### Prerequisites/Setup
+1. Windows environment without elevated symlink permission, or a test shell where `symlink('skills/AGENTS.md', '<CODEX_HOME>/AGENTS.md')` fails with `EPERM`.
+2. Dev server running (`pnpm run dev --host 127.0.0.1 --port 4173`).
+3. Skills Hub route available at `#/skills`.
+
+#### Steps
+1. Start the dev server in light theme and open `http://127.0.0.1:4173/#/skills`.
+2. Wait for the Skills Sync status panel to render.
+3. Confirm the page does not show a startup-sync failure containing `EPERM: operation not permitted, symlink`.
+4. Confirm `~/.codex/AGENTS.md` exists as either a symlink or a regular file with the same content copied from `~/.codex/skills/AGENTS.md`.
+5. Switch to dark theme and reload `#/skills`.
+6. Confirm the Skills Sync panel remains readable and no symlink error appears.
+
+#### Expected Results
+- Startup sync does not fail only because Windows cannot create the symlink.
+- When symlink creation is denied, CodexUI writes a regular fallback `AGENTS.md` file.
+- Skills Hub remains usable in both light and dark themes.
+
+#### Rollback/Cleanup
+- None.
