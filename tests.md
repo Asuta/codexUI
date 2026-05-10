@@ -4751,3 +4751,41 @@ Newly created temporary and permanent worktrees are persisted in workspace roots
 - Remove temporary test worktrees with `git worktree remove --force <worktree-path>`.
 - Delete any empty temporary parent directory left under `$CODEX_HOME/worktrees/<id>`.
 - Remove permanent test worktrees with `git worktree remove --force <worktree-path>` and delete their test branch if needed.
+
+---
+
+### Selective upstream feature sync from friuns2/codexui
+
+#### Feature/Change Name
+Selective import of upstream thread automations, selected skill chips, pinned thread hydration, lazy project Git checks, archive recovery, worktree persistence, and OpenCode Zen proxy fixes.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev`)
+2. At least one existing thread with a selectable skill available
+3. At least one projectless chat and one Git-backed project in the sidebar
+4. Light theme and dark theme both available from the appearance switcher
+
+#### Steps
+1. In light theme, send a message with a selected skill, refresh the thread, and confirm the sent user message still shows the selected skill chip.
+2. Click the skill chip and confirm the local `SKILL.md` opens through the file browser flow.
+3. Pin a thread, load or paginate the sidebar, and confirm the pinned row remains visible even if the normal list page does not currently include it.
+4. Open a project action menu and confirm Git-backed-only actions appear after the menu requests project Git status.
+5. Open a thread menu, add two automations, edit one, delete one, and confirm the other remains.
+6. Click `Run now` for an automation on an idle thread and confirm a readable `Sent via automation` prompt card appears instead of raw heartbeat XML.
+7. Repeat the automation manager and pinned-thread checks in dark theme.
+8. Start a new thread in Plan mode, then open an existing thread and confirm the existing thread does not inherit Plan mode unless it was explicitly set there.
+9. If OpenCode Zen/Big Pickle is configured, send a thinking/tool-call prompt through the local proxy and confirm reasoning content is preserved across the tool-call round trip.
+
+#### Expected Results
+- Selected skill chips survive session-history recovery and remain clickable.
+- Project Git status is requested lazily from the project menu instead of blocking initial sidebar load.
+- Pinned threads remain visible during paged thread hydration.
+- Thread automations support multiple records per thread, schedule presets, independent edit/delete, and manual `Run now`.
+- Automation prompt cards render as readable user-side cards in both light and dark themes.
+- Archive/delete recovery removes archived threads from loaded sidebar state without stale rows.
+- OpenCode Zen reasoning content is preserved for thinking-mode proxy calls.
+
+#### Rollback/Cleanup
+- Delete any test automations created for disposable threads.
+- Unpin any temporary pinned threads.
+- Remove disposable test threads/worktrees created during validation.
