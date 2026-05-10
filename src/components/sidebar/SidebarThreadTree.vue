@@ -897,6 +897,7 @@ const emit = defineEmits<{
   'fork-thread': [threadId: string]
   'start-new-chat': []
   'toggle-filter': []
+  'automations-changed': []
 }>()
 
 type PendingProjectDrag = {
@@ -1784,6 +1785,27 @@ function openProjectAutomationDialog(projectName: string): void {
   closeProjectMenu()
 }
 
+function openAutomationEditorFromPanel(payload: {
+  scope: 'thread' | 'project'
+  target: string
+  automation: UiThreadAutomation
+}): void {
+  automationDialogScope.value = payload.scope
+  automationDialogThreadId.value = payload.scope === 'thread' ? payload.target : ''
+  automationDialogProjectName.value = payload.scope === 'project' ? payload.target : ''
+  automationDialogError.value = ''
+  automationDialogNotice.value = ''
+  if (payload.scope === 'project') {
+    automationByProjectName.value = updateAutomationForProject(automationByProjectName.value, payload.target, payload.automation)
+  } else {
+    automationByThreadId.value = updateAutomationForThread(automationByThreadId.value, payload.target, payload.automation)
+  }
+  selectAutomationForEditing(payload.automation.id)
+  automationDialogVisible.value = true
+  closeProjectMenu()
+  closeThreadMenu()
+}
+
 function startNewAutomationDraft(): void {
   automationDialogAutomationId.value = ''
   automationDialogMode.value = 'create'
@@ -1909,6 +1931,7 @@ async function submitAutomationDialog(): Promise<void> {
     } else {
       automationByThreadId.value = updateAutomationForThread(automationByThreadId.value, threadId, saved)
     }
+    emit('automations-changed')
     selectAutomationForEditing(saved.id)
     automationDialogNotice.value = 'Automation saved.'
     isSavingAutomation.value = false
@@ -1942,6 +1965,7 @@ async function onDeleteAutomationFromDialog(): Promise<void> {
     } else {
       startNewAutomationDraft()
     }
+    emit('automations-changed')
     isSavingAutomation.value = false
   } catch (error) {
     automationDialogError.value = error instanceof Error ? error.message : 'Failed to remove automation'
@@ -1969,6 +1993,10 @@ async function onRunAutomationFromDialog(): Promise<void> {
 function getProjectDisplayName(projectName: string): string {
   return props.projectDisplayNameById[projectName] ?? projectName
 }
+
+defineExpose({
+  openAutomationEditorFromPanel,
+})
 
 function isPathLikeProjectName(value: string): boolean {
   return value.includes('/') || value.includes('\\')
