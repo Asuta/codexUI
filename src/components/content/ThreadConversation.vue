@@ -14,10 +14,10 @@
         <button
           type="button"
           class="load-more-button"
-          :disabled="isLoadingMore"
+          :disabled="isLoadingMore || isLoadingPersistedAbove"
           @click="loadMoreAbove"
         >
-          {{ isLoadingMore ? 'Loading…' : 'Load earlier messages' }}
+          {{ isLoadingMore || isLoadingPersistedAbove ? 'Loading…' : 'Load earlier messages' }}
         </button>
       </li>
       <template v-for="message in visibleMessages" :key="message.id">
@@ -4034,7 +4034,7 @@ function jumpToLatest(): void {
 
 async function loadMoreAbove(): Promise<void> {
   const container = conversationListRef.value
-  if (!container || !hasMoreAbove.value || isLoadingMore.value) return
+  if (!container || !hasMoreAbove.value || isLoadingMore.value || props.isLoadingOlderMessages === true) return
 
   isLoadingMore.value = true
   const threadIdAtStart = props.activeThreadId
@@ -4042,17 +4042,20 @@ async function loadMoreAbove(): Promise<void> {
   const prevScrollHeight = container.scrollHeight
   const prevScrollTop = container.scrollTop
 
-  if (renderWindowStart.value > 0) {
-    renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
-  } else if (props.canLoadOlderMessages === true) {
-    await new Promise<void>((resolve) => emit('loadOlderMessages', resolve))
-  }
+  try {
+    if (renderWindowStart.value > 0) {
+      renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
+    } else if (props.canLoadOlderMessages === true) {
+      await new Promise<void>((resolve) => emit('loadOlderMessages', resolve))
+    }
 
-  await nextTick()
+    await nextTick()
 
-  // Discard scroll restoration if the thread changed while we were awaiting.
-  if (props.activeThreadId === threadIdAtStart) {
-    container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
+    // Discard scroll restoration if the thread changed while we were awaiting.
+    if (props.activeThreadId === threadIdAtStart) {
+      container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
+    }
+  } finally {
     isLoadingMore.value = false
   }
 }
