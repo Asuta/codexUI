@@ -3286,21 +3286,60 @@ function serializeTomlString(value: string): string {
 function parseTomlStringArray(value: string): string[] {
   const trimmed = value.trim()
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) return []
-  try {
-    const parsed = JSON.parse(trimmed)
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-      : []
-  } catch {
-    return []
+  const values: string[] = []
+  let index = 1
+  const endIndex = trimmed.length - 1
+
+  while (index < endIndex) {
+    while (index < endIndex && /[\s,]/u.test(trimmed[index] ?? '')) index += 1
+    if (index >= endIndex) break
+
+    const quote = trimmed[index]
+    if (quote !== '"' && quote !== "'") return []
+    const start = index
+    index += 1
+    let valueText = ''
+
+    if (quote === "'") {
+      const closeIndex = trimmed.indexOf("'", index)
+      if (closeIndex < 0 || closeIndex > endIndex) return []
+      valueText = trimmed.slice(index, closeIndex)
+      index = closeIndex + 1
+    } else {
+      let escaped = false
+      while (index < endIndex) {
+        const char = trimmed[index] ?? ''
+        if (escaped) {
+          escaped = false
+        } else if (char === '\\') {
+          escaped = true
+        } else if (char === '"') {
+          break
+        }
+        index += 1
+      }
+      if (index >= endIndex || trimmed[index] !== '"') return []
+      try {
+        valueText = JSON.parse(trimmed.slice(start, index + 1)) as string
+      } catch {
+        return []
+      }
+      index += 1
+    }
+
+    if (valueText.trim().length > 0) values.push(valueText)
+    while (index < endIndex && /\s/u.test(trimmed[index] ?? '')) index += 1
+    if (index < endIndex && trimmed[index] !== ',') return []
   }
+
+  return values
 }
 
 function serializeTomlStringArray(values: string[]): string {
   return `[${values.map((value) => serializeTomlString(value)).join(', ')}]`
 }
 
-function parseAutomationToml(raw: string): ThreadAutomationRecord | null {
+export function parseAutomationToml(raw: string): ThreadAutomationRecord | null {
   const values: Record<string, string> = {}
   const extraTomlLines: string[] = []
   const knownKeys = new Set([
@@ -3397,6 +3436,29 @@ function serializeAutomationToml(record: ThreadAutomationRecord): string {
   )
   lines.push(...record.extraTomlLines)
   return `${lines.join('\n')}\n`
+}
+
+export function toAutomationApiRecord(record: ThreadAutomationRecord): Omit<ThreadAutomationRecord, 'extraTomlLines'> {
+  const { extraTomlLines: _extraTomlLines, ...apiRecord } = record
+  return apiRecord
+}
+
+function toAutomationApiMap(
+  automationsByTarget: Record<string, ThreadAutomationRecord[]>,
+): Record<string, Array<Omit<ThreadAutomationRecord, 'extraTomlLines'>>> {
+  return Object.fromEntries(
+    Object.entries(automationsByTarget).map(([target, automations]) => [
+      target,
+      automations.map(toAutomationApiRecord),
+    ]),
+  )
+}
+
+function toAutomationApiData(
+  automation: ThreadAutomationRecord | ThreadAutomationRecord[] | null,
+): Omit<ThreadAutomationRecord, 'extraTomlLines'> | Array<Omit<ThreadAutomationRecord, 'extraTomlLines'>> | null {
+  if (Array.isArray(automation)) return automation.map(toAutomationApiRecord)
+  return automation ? toAutomationApiRecord(automation) : null
 }
 
 function slugifyAutomationId(threadId: string, name: string): string {
@@ -7266,13 +7328,13 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
 
       if (req.method === 'GET' && url.pathname === '/codex-api/thread-automations') {
         const automationsByThreadId = await listThreadHeartbeatAutomations()
-        setJson(res, 200, { data: automationsByThreadId })
+        setJson(res, 200, { data: toAutomationApiMap(automationsByThreadId) })
         return
       }
 
       if (req.method === 'GET' && url.pathname === '/codex-api/project-automations') {
         const automationsByProjectName = await listProjectCronAutomations()
-        setJson(res, 200, { data: automationsByProjectName })
+        setJson(res, 200, { data: toAutomationApiMap(automationsByProjectName) })
         return
       }
 
@@ -7286,7 +7348,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
         const automation = automationId
           ? await readThreadHeartbeatAutomation(threadId, automationId)
           : await readThreadHeartbeatAutomations(threadId)
-        setJson(res, 200, { data: automation })
+        setJson(res, 200, { data: toAutomationApiData(automation) })
         return
       }
 
@@ -7300,7 +7362,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
         const automation = automationId
           ? await readProjectCronAutomation(projectName, automationId)
           : await readProjectCronAutomations(projectName)
-        setJson(res, 200, { data: automation })
+        setJson(res, 200, { data: toAutomationApiData(automation) })
         return
       }
 
@@ -7368,7 +7430,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           return
         }
         const automation = await writeThreadHeartbeatAutomation({ threadId, id, name, prompt, rrule, status })
-        setJson(res, 200, { data: automation })
+        setJson(res, 200, { data: toAutomationApiRecord(automation) })
         return
       }
 
@@ -7389,7 +7451,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           return
         }
         const automation = await writeProjectCronAutomation({ projectName, id, name, prompt, rrule, status })
-        setJson(res, 200, { data: automation })
+        setJson(res, 200, { data: toAutomationApiRecord(automation) })
         return
       }
 
