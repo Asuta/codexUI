@@ -138,7 +138,10 @@
                   </button>
                 </div>
                 <template v-if="!isAccountsSectionCollapsed">
-                  <p v-if="accountActionError" class="sidebar-settings-account-error">{{ accountActionError }}</p>
+                  <div v-if="accountActionError" class="sidebar-settings-account-error visible-error-with-feedback">
+                    <span>{{ accountActionError }}</span>
+                    <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
+                  </div>
                   <div class="sidebar-settings-account-login">
                     <button
                       class="sidebar-settings-account-login-button"
@@ -248,6 +251,14 @@
                 <span class="sidebar-settings-label">{{ t('Auto send dictation') }}</span>
                 <span class="sidebar-settings-toggle" :class="{ 'is-on': dictationAutoSend }" />
               </button>
+              <a
+                v-if="hasFeedbackDiagnostics"
+                class="sidebar-settings-row sidebar-settings-feedback-row"
+                :href="feedbackMailto"
+              >
+                <span class="sidebar-settings-label">{{ t('Send feedback') }}</span>
+                <span class="sidebar-settings-value">{{ t('Issue detected') }}</span>
+              </a>
 
               <div class="sidebar-settings-row sidebar-settings-row--select" :title="t('Choose the API provider for the Codex backend')">
                 <span class="sidebar-settings-label">{{ t('Provider') }}</span>
@@ -264,7 +275,8 @@
                 </select>
               </div>
               <div v-if="providerError" class="sidebar-settings-row sidebar-settings-error">
-                {{ providerError }}
+                <span>{{ providerError }}</span>
+                <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
               </div>
               <div v-if="selectedProvider === 'openrouter'" class="sidebar-settings-row sidebar-settings-row--input">
                 <div class="sidebar-settings-provider-info">
@@ -445,7 +457,8 @@
                   {{ t('Put one Telegram user ID per line or separate them with commas. Use `*` to allow all Telegram users. Unauthorized users will see their own ID in the rejection message so they can copy it here.') }}
                 </div>
                 <div v-if="telegramConfigError" class="sidebar-settings-telegram-error">
-                  {{ telegramConfigError }}
+                  <span>{{ telegramConfigError }}</span>
+                  <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
                 </div>
                 <div class="sidebar-settings-telegram-actions">
                   <button
@@ -704,7 +717,10 @@
                             {{ createFolderSubmitLabel }}
                           </button>
                         </div>
-                        <p v-if="createFolderError" class="new-thread-open-folder-error">{{ createFolderError }}</p>
+                        <div v-if="createFolderError" class="new-thread-open-folder-error visible-error-with-feedback">
+                          <span>{{ createFolderError }}</span>
+                          <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
+                        </div>
                       </div>
                       <input
                         ref="existingFolderFilterInputRef"
@@ -715,7 +731,10 @@
                         @keydown.esc.prevent="onCloseExistingFolderPanel"
                       />
                       <div v-if="existingFolderError" class="new-thread-open-folder-error-actions">
-                        <p class="new-thread-open-folder-error">{{ existingFolderError }}</p>
+                        <div class="new-thread-open-folder-error visible-error-with-feedback">
+                          <span>{{ existingFolderError }}</span>
+                          <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
+                        </div>
                         <button
                           class="new-thread-folder-action"
                           type="button"
@@ -821,7 +840,10 @@
                           @keydown.enter.prevent="onSubmitProjectSetup"
                         />
                       </label>
-                      <p v-if="projectSetupError" class="new-thread-open-folder-error">{{ projectSetupError }}</p>
+                      <div v-if="projectSetupError" class="new-thread-open-folder-error visible-error-with-feedback">
+                        <span>{{ projectSetupError }}</span>
+                        <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
+                      </div>
                       <div class="new-thread-project-modal-actions">
                         <button class="new-thread-folder-action" type="button" :disabled="isProjectSetupSubmitting" @click="onCloseProjectSetupModal">
                           {{ t('Cancel') }}
@@ -883,7 +905,8 @@
 
               <div class="composer-with-queue">
                 <div v-if="codexCliMissingError" class="composer-runtime-error" role="alert">
-                  {{ t(codexCliMissingError) }}
+                  <span>{{ t(codexCliMissingError) }}</span>
+                  <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
                 </div>
                 <ThreadTerminalPanel
                   v-if="homeTerminalOpen && composerCwd"
@@ -945,7 +968,8 @@
 
                 <div class="composer-with-queue">
                   <div v-if="codexCliMissingError" class="composer-runtime-error" role="alert">
-                    {{ t(codexCliMissingError) }}
+                    <span>{{ t(codexCliMissingError) }}</span>
+                    <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
                   </div>
                   <QueuedMessages
                     :messages="selectedThreadQueuedMessages"
@@ -1052,7 +1076,10 @@
         :placeholder="t('Paste localhost callback URL')"
         :disabled="isCompletingCodexLogin"
       >
-      <p v-if="accountActionError" class="codex-login-modal-error">{{ accountActionError }}</p>
+      <div v-if="accountActionError" class="codex-login-modal-error visible-error-with-feedback">
+        <span>{{ accountActionError }}</span>
+        <a class="visible-error-feedback" :href="feedbackMailto">{{ t('Send feedback') }}</a>
+      </div>
       <div class="codex-login-modal-actions">
         <button
           class="codex-login-modal-cancel"
@@ -1096,6 +1123,7 @@ import IconTablerX from './components/icons/IconTablerX.vue'
 import { useDesktopState } from './composables/useDesktopState'
 import { useMobile } from './composables/useMobile'
 import { useUiLanguage } from './composables/useUiLanguage'
+import { useFeedbackDiagnostics } from './composables/useFeedbackDiagnostics'
 import {
   checkoutGitBranch,
   cloneGithubRepository,
@@ -1338,6 +1366,7 @@ const {
   isInterruptingTurn,
   isSelectedThreadInterruptPending,
   isUpdatingSpeedMode,
+  error: desktopError,
   refreshAll,
   refreshSkills,
   selectThread,
@@ -1390,6 +1419,12 @@ type AutomationEditRequest = {
 }
 const sidebarThreadTreeRef = ref<SidebarThreadTreeExposed | null>(null)
 const automationsPanelRef = ref<AutomationsPanelExposed | null>(null)
+const {
+  hasFeedbackDiagnostics,
+  buildFeedbackMailto,
+  recordVisibleFailure,
+} = useFeedbackDiagnostics()
+const feedbackMailto = computed(() => buildFeedbackMailto())
 const homeThreadComposerRef = ref<ThreadComposerExposed | null>(null)
 const threadComposerRef = ref<ThreadComposerExposed | null>(null)
 const threadConversationRef = ref<{ jumpToLatest: () => void } | null>(null)
@@ -1528,6 +1563,18 @@ const isExistingFolderLoading = ref(false)
 const isOpeningExistingFolder = ref(false)
 const showHiddenFolders = ref(false)
 const existingFolderFilter = ref('')
+const visibleFeedbackErrors = [
+  desktopError,
+  codexCliMissingError,
+  threadBranchError,
+  threadBranchCommitsError,
+  accountActionError,
+  providerError,
+  telegramConfigError,
+  createFolderError,
+  projectSetupError,
+  existingFolderError,
+]
 const telegramStatus = ref<TelegramStatus>({
   configured: false,
   active: false,
@@ -1966,6 +2013,15 @@ onMounted(() => {
   void loadFreeModeStatus()
   void refreshThreadTerminalStatus()
   void refreshTerminalQuickCommands()
+})
+
+watch(visibleFeedbackErrors, (values) => {
+  for (const value of values) {
+    const message = value.trim()
+    if (message) {
+      recordVisibleFailure(message)
+    }
+  }
 })
 
 onUnmounted(() => {
@@ -4629,7 +4685,15 @@ async function loadWorktreeBranches(sourceCwd: string): Promise<void> {
 }
 
 .composer-runtime-error {
-  @apply w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 shadow-sm;
+  @apply flex w-full items-start justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 shadow-sm;
+}
+
+.visible-error-with-feedback {
+  @apply flex items-start justify-between gap-3;
+}
+
+.visible-error-feedback {
+  @apply shrink-0 rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-300;
 }
 
 .content-thread-terminal-panel {
