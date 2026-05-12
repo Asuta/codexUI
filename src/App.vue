@@ -3911,7 +3911,7 @@ async function onProviderChange(provider: string): Promise<void> {
     } else if (provider === 'opencode-zen') {
       selectedProvider.value = 'opencode-zen'
       await setCustomProvider('', opencodeZenKey.value.trim(), {
-        wireApi: 'chat',
+        wireApi: 'responses',
         provider: 'opencode-zen',
       })
       freeModeEnabled.value = true
@@ -3985,7 +3985,7 @@ async function saveOpencodeZen(): Promise<void> {
   try {
     providerError.value = ''
     await setCustomProvider('', key, {
-      wireApi: 'chat',
+      wireApi: 'responses',
       provider: 'opencode-zen',
     })
     freeModeEnabled.value = true
