@@ -326,6 +326,49 @@ describe('thread unread state helpers', () => {
   })
 })
 
+describe('collaboration mode selection', () => {
+  it('does not carry plan mode from new chats into existing threads', () => {
+    installTestWindow({
+      'codex-web-local.collaboration-mode.v1': 'plan',
+    })
+
+    const state = useDesktopState()
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.setSelectedCollaborationMode('plan')
+
+    expect(state.selectedCollaborationMode.value).toBe('plan')
+    expect(window.localStorage.getItem('codex-web-local.collaboration-mode-by-context.v1')).toBe(null)
+
+    state.primeSelectedThread('thread-a')
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.setSelectedCollaborationMode('plan')
+    state.primeSelectedThread('thread-b')
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.primeSelectedThread('thread-a')
+
+    expect(state.selectedCollaborationMode.value).toBe('plan')
+  })
+})
+
+describe('Codex CLI availability', () => {
+  it('surfaces a chat runtime error when the app-server bridge cannot find Codex CLI', async () => {
+    installTestWindow()
+    gatewayMocks.getThreadGroupsPage.mockRejectedValue(new Error('Codex CLI is not available. Install @openai/codex or set CODEXUI_CODEX_COMMAND.'))
+
+    const state = useDesktopState()
+
+    await state.refreshAll({ awaitAncillaryRefreshes: true })
+
+    expect(state.codexCliMissingError.value).toBe('Codex CLI not found. Install @openai/codex or set CODEXUI_CODEX_COMMAND.')
+  })
+})
+
 describe('findAdjacentThreadId', () => {
   it('selects the next thread after the archived thread', () => {
     const threads = [

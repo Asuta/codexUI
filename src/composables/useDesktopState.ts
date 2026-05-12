@@ -94,6 +94,12 @@ const THREAD_TURN_PAGE_SIZE = 5
 const REASONING_EFFORT_OPTIONS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const GLOBAL_SERVER_REQUEST_SCOPE = '__global__'
 const MODEL_FALLBACK_ID = 'gpt-5.4-mini'
+const CODEX_CLI_MISSING_MESSAGE = 'Codex CLI not found. Install @openai/codex or set CODEXUI_CODEX_COMMAND.'
+
+function isCodexCliMissingError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '')
+  return message.includes('Codex CLI is not available')
+}
 
 function loadReadStateMap(): Record<string, string> {
   if (typeof window === 'undefined') return {}
@@ -1396,6 +1402,7 @@ export function useDesktopState() {
   const selectedReasoningEffort = ref<ReasoningEffort | ''>('medium')
   const selectedSpeedMode = ref<SpeedMode>('standard')
   const activeProviderId = ref('')
+  const codexCliMissingError = ref('')
   const readStateByThreadId = ref<Record<string, string>>(loadReadStateMap())
   const unreadCutoffIso = ref(loadUnreadCutoffIso())
   const projectOrder = ref<string[]>(loadProjectOrder())
@@ -1910,7 +1917,11 @@ export function useDesktopState() {
         selectedReasoningEffort.value = currentConfig.reasoningEffort
       }
       selectedSpeedMode.value = currentConfig.speedMode
-    } catch {
+      codexCliMissingError.value = ''
+    } catch (unknownError) {
+      if (isCodexCliMissingError(unknownError)) {
+        codexCliMissingError.value = CODEX_CLI_MISSING_MESSAGE
+      }
       // Keep chat UI usable even if model metadata is temporarily unavailable.
     }
   }
@@ -4517,6 +4528,9 @@ export function useDesktopState() {
       }
     } catch (unknownError) {
       error.value = unknownError instanceof Error ? unknownError.message : 'Unknown application error'
+      if (isCodexCliMissingError(unknownError)) {
+        codexCliMissingError.value = CODEX_CLI_MISSING_MESSAGE
+      }
     }
   }
 
@@ -5541,6 +5555,7 @@ export function useDesktopState() {
     selectedModelId,
     selectedReasoningEffort,
     selectedSpeedMode,
+    codexCliMissingError,
     installedSkills,
     accountRateLimitSnapshots,
     messages,

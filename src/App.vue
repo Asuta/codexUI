@@ -882,6 +882,9 @@
               </div>
 
               <div class="composer-with-queue">
+                <div v-if="codexCliMissingError" class="composer-runtime-error" role="alert">
+                  {{ t(codexCliMissingError) }}
+                </div>
                 <ThreadTerminalPanel
                   v-if="homeTerminalOpen && composerCwd"
                   ref="homeTerminalPanelRef"
@@ -941,6 +944,9 @@
                 </div>
 
                 <div class="composer-with-queue">
+                  <div v-if="codexCliMissingError" class="composer-runtime-error" role="alert">
+                    {{ t(codexCliMissingError) }}
+                  </div>
                   <QueuedMessages
                     :messages="selectedThreadQueuedMessages"
                     @edit="onEditQueuedMessage"
@@ -1318,6 +1324,7 @@ const {
   selectedModelId,
   selectedReasoningEffort,
   selectedSpeedMode,
+  codexCliMissingError,
   installedSkills,
   accountRateLimitSnapshots,
   messages,
@@ -4619,6 +4626,10 @@ async function loadWorktreeBranches(sourceCwd: string): Promise<void> {
 
 .composer-with-queue {
   @apply w-full shrink-0 px-2 sm:px-6 flex flex-col gap-2;
+}
+
+.composer-runtime-error {
+  @apply w-full rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800 shadow-sm;
 }
 
 .content-thread-terminal-panel {
