@@ -1381,7 +1381,7 @@ onMounted(async () => {
     automationByThreadId.value = {}
   }
   try {
-    automationByProjectName.value = await getProjectAutomationMap()
+    await reloadProjectAutomations()
   } catch {
     automationByProjectName.value = {}
   }
@@ -2028,13 +2028,8 @@ function updateAutomationForProject(
   return { ...state, [projectName]: next }
 }
 
-function removeAutomationForProject(
-  state: Record<string, UiThreadAutomation[]>,
-  projectName: string,
-  automationId: string,
-): Record<string, UiThreadAutomation[]> {
-  const next = (state[projectName] ?? []).filter((automation) => automation.id !== automationId)
-  return next.length > 0 ? { ...state, [projectName]: next } : omitAutomationProject(state, projectName)
+async function reloadProjectAutomations(): Promise<void> {
+  automationByProjectName.value = await getProjectAutomationMap()
 }
 
 async function submitAutomationDialog(): Promise<void> {
@@ -2077,7 +2072,7 @@ async function submitAutomationDialog(): Promise<void> {
       ? await upsertProjectAutomation({ ...input, projectName })
       : await upsertThreadAutomation({ ...input, threadId })
     if (automationDialogScope.value === 'project') {
-      automationByProjectName.value = updateAutomationForProject(automationByProjectName.value, projectName, saved)
+      await reloadProjectAutomations()
     } else {
       automationByThreadId.value = updateAutomationForThread(automationByThreadId.value, threadId, saved)
     }
@@ -2104,7 +2099,7 @@ async function onDeleteAutomationFromDialog(): Promise<void> {
   try {
     if (automationDialogScope.value === 'project') {
       await deleteProjectAutomation(projectName, automationId)
-      automationByProjectName.value = removeAutomationForProject(automationByProjectName.value, projectName, automationId)
+      await reloadProjectAutomations()
     } else {
       await deleteThreadAutomation(threadId, automationId)
       automationByThreadId.value = removeAutomationForThread(automationByThreadId.value, threadId, automationId)
@@ -2290,8 +2285,12 @@ function onRemoveProject(projectName: string): void {
   const projectCwd = getProjectAutomationKey(projectName)
   emit('remove-project', projectName)
   if (projectCwd && projectHasAutomation(projectName)) {
-    void deleteProjectAutomation(projectCwd).catch(() => undefined)
     automationByProjectName.value = omitAutomationProject(automationByProjectName.value, projectCwd)
+    void deleteProjectAutomation(projectCwd)
+      .then(reloadProjectAutomations)
+      .finally(() => {
+        emit('automations-changed')
+      })
   }
   closeProjectMenu()
 }
