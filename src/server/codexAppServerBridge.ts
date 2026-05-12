@@ -220,6 +220,7 @@ const COMPOSIO_CONNECTORS_PAGE_LIMIT_MAX = 1000
 const PROVIDER_MODELS_FETCH_TIMEOUT_MS = 5_000
 
 const THREAD_RESPONSE_TURN_LIMIT = 10
+const THREAD_TURN_PAGE_READ_CACHE_TTL_MS = 30_000
 const THREAD_METHODS_WITH_TURNS = new Set(['thread/read', 'thread/resume', 'thread/fork', 'thread/rollback'])
 const THREAD_TURNS_PAGE_METHOD = 'thread/turns/list'
 const THREAD_SEARCH_FULL_TEXT_THREAD_LIMIT = 100
@@ -4381,6 +4382,8 @@ class AppServerProcess {
   private readonly appServerArgs = buildAppServerArgs()
   private readonly streamEventsByThreadId = new Map<string, StreamEventFrame[]>()
   private readonly lastThreadReadSnapshotByThreadId = new Map<string, unknown>()
+  private readonly threadTurnPageReadCacheByThreadId = new Map<string, { result: unknown; expiresAt: number }>()
+  private readonly threadTurnPageReadPromiseByThreadId = new Map<string, Promise<unknown>>()
   private readonly capturedItemsByThreadId = new Map<string, Map<string, CapturedItem>>()
   private readonly liveStateCache = new Map<string, { data: unknown; turnCount: number; sessionSize: number }>()
   private chatgptAuthRefreshPromise: Promise<ChatgptAuthTokensRefreshResponse> | null = null
@@ -4516,7 +4519,10 @@ class AppServerProcess {
     this.recordStreamEvent(notification)
     this.captureItemFromNotification(notification)
     const nThreadId = this.extractThreadIdFromParams(notification.params)
-    if (nThreadId) this.invalidateLiveStateCache(nThreadId)
+    if (nThreadId) {
+      this.invalidateLiveStateCache(nThreadId)
+      this.threadTurnPageReadCacheByThreadId.delete(nThreadId)
+    }
     for (const listener of this.notificationListeners) {
       listener(notification)
     }
@@ -4570,10 +4576,37 @@ class AppServerProcess {
 
   storeThreadReadSnapshot(threadId: string, snapshot: unknown): void {
     this.lastThreadReadSnapshotByThreadId.set(threadId, snapshot)
+    this.threadTurnPageReadCacheByThreadId.delete(threadId)
   }
 
   getLastThreadReadSnapshot(threadId: string): unknown | null {
     return this.lastThreadReadSnapshotByThreadId.get(threadId) ?? null
+  }
+
+  async readThreadForTurnPage(threadId: string): Promise<unknown> {
+    const now = Date.now()
+    const cached = this.threadTurnPageReadCacheByThreadId.get(threadId)
+    if (cached && cached.expiresAt > now) return cached.result
+    if (cached) this.threadTurnPageReadCacheByThreadId.delete(threadId)
+
+    const pending = this.threadTurnPageReadPromiseByThreadId.get(threadId)
+    if (pending) return pending
+
+    const promise = this.rpc('thread/read', {
+      threadId,
+      includeTurns: true,
+    }).then((result) => {
+      this.threadTurnPageReadCacheByThreadId.set(threadId, {
+        result,
+        expiresAt: Date.now() + THREAD_TURN_PAGE_READ_CACHE_TTL_MS,
+      })
+      return result
+    }).finally(() => {
+      this.threadTurnPageReadPromiseByThreadId.delete(threadId)
+    })
+
+    this.threadTurnPageReadPromiseByThreadId.set(threadId, promise)
+    return promise
   }
 
   cacheLiveState(threadId: string, data: unknown, turnCount: number, sessionSize: number): void {
@@ -5875,10 +5908,7 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
             return
           }
 
-          const threadReadResult = await appServer.rpc('thread/read', {
-            threadId,
-            includeTurns: true,
-          })
+          const threadReadResult = await appServer.readThreadForTurnPage(threadId)
           const record = asRecord(threadReadResult)
           const thread = asRecord(record?.thread)
           if (!record || !thread) {
@@ -5890,7 +5920,22 @@ export function createCodexBridgeMiddleware(): CodexBridgeMiddleware {
           const beforeIndex = beforeTurnId
             ? turns.findIndex((turn) => asRecord(turn)?.id === beforeTurnId)
             : turns.length
-          const endIndex = beforeIndex >= 0 ? beforeIndex : turns.length
+          if (beforeTurnId && beforeIndex < 0) {
+            setJson(res, 200, {
+              result: {
+                ...record,
+                thread: {
+                  ...thread,
+                  turns: [],
+                },
+              },
+              startTurnIndex: 0,
+              hasMoreOlder: false,
+            })
+            return
+          }
+
+          const endIndex = beforeIndex
           const startIndex = Math.max(0, endIndex - limit)
           const pageTurns = turns.slice(startIndex, endIndex)
           const pagedResult = {
