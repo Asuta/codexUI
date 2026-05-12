@@ -2570,12 +2570,12 @@ function onRespondServerRequest(payload: UiServerRequestReply): void {
   void handleServerRequestResponse(payload)
 }
 
-function onLoadOlderThreadMessages(done: () => void): void {
-  loadOlderThreadMessages()
+function onLoadOlderThreadMessages(payload: { threadId: string; done: () => void }): void {
+  loadOlderThreadMessages(payload.threadId)
     .catch((unknownError) => {
       console.warn('Failed to load older thread messages', unknownError)
     })
-    .finally(done)
+    .finally(payload.done)
 }
 
 async function handleServerRequestResponse(payload: UiServerRequestReply): Promise<void> {

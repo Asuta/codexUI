@@ -1246,7 +1246,7 @@ const emit = defineEmits<{
   forkThread: [payload: { threadId: string; turnIndex: number }]
   rollback: [payload: { turnId: string }]
   implementPlan: [payload: { turnId: string }]
-  loadOlderMessages: [done: () => void]
+  loadOlderMessages: [payload: { threadId: string; done: () => void }]
   respondServerRequest: [payload: { id: number; result?: unknown; error?: { code?: number; message: string } }]
 }>()
 
@@ -4046,7 +4046,7 @@ async function loadMoreAbove(): Promise<void> {
     if (renderWindowStart.value > 0) {
       renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
     } else if (props.canLoadOlderMessages === true) {
-      await new Promise<void>((resolve) => emit('loadOlderMessages', resolve))
+      await new Promise<void>((resolve) => emit('loadOlderMessages', { threadId: threadIdAtStart, done: resolve }))
     }
 
     await nextTick()
