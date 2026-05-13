@@ -84,7 +84,6 @@
             :is-thread-list-fully-loaded="isThreadListFullyLoaded"
             :search-query="sidebarSearchQuery"
             :search-matched-thread-ids="serverMatchedThreadIds"
-            :filter-active="isSidebarSearchVisible"
             @select="onSelectThread"
             @archive="onArchiveThread" @start-new-thread="onStartNewThread" @rename-project="onRenameProject"
             @browse-thread-files="onBrowseThreadFiles"
@@ -96,8 +95,7 @@
             @remove-project="onRemoveProject" @reorder-project="onReorderProject"
             @export-thread="onExportThread"
             @automations-changed="onAutomationsChanged"
-            @start-new-chat="onStartNewThreadFromToolbar"
-            @toggle-filter="toggleSidebarSearch" />
+            @start-new-chat="onStartNewThreadFromToolbar" />
         </div>
 
         <div
@@ -955,14 +953,14 @@
                 <div class="content-thread">
                   <ThreadConversation ref="threadConversationRef" :messages="filteredMessages" :is-loading="isLoadingMessages"
                     :active-thread-id="composerThreadContextId" :cwd="composerCwd"
-                    :can-load-older-messages="selectedThreadCanLoadOlderMessages"
-                    :is-loading-older-messages="selectedThreadIsLoadingOlderMessages"
                     :live-overlay="liveOverlay"
                     :pending-requests="selectedThreadServerRequests"
+                    :has-more-persisted-above="hasMoreOlderMessages"
+                    :is-loading-persisted-above="isLoadingOlderMessages"
+                    :load-earlier-messages="loadOlderMessages"
                     @fork-thread="onForkThreadFromMessage"
                     @rollback="onRollback"
                     @implement-plan="onImplementPlan"
-                    @load-older-messages="onLoadOlderThreadMessages"
                     @respond-server-request="onRespondServerRequest" />
                 </div>
 
@@ -1356,11 +1354,11 @@ const {
   installedSkills,
   accountRateLimitSnapshots,
   messages,
-  selectedThreadCanLoadOlderMessages,
-  selectedThreadIsLoadingOlderMessages,
+  hasMoreOlderMessages,
   isLoadingThreads,
   isThreadListFullyLoaded,
   isLoadingMessages,
+  isLoadingOlderMessages,
   isSendingMessage,
   isInterruptingTurn,
   isSelectedThreadInterruptPending,
@@ -1370,7 +1368,7 @@ const {
   refreshSkills,
   selectThread,
   ensureThreadMessagesLoaded,
-  loadOlderThreadMessages,
+  loadOlderMessages,
   setThreadTerminalOpen,
   toggleSelectedThreadTerminal,
   archiveThreadById,
@@ -2720,14 +2718,6 @@ function onRequestProjectGitStatus(projectName: string): void {
 
 function onRespondServerRequest(payload: UiServerRequestReply): void {
   void handleServerRequestResponse(payload)
-}
-
-function onLoadOlderThreadMessages(payload: { threadId: string; done: () => void }): void {
-  loadOlderThreadMessages(payload.threadId)
-    .catch((unknownError) => {
-      console.warn('Failed to load older thread messages', unknownError)
-    })
-    .finally(payload.done)
 }
 
 async function handleServerRequestResponse(payload: UiServerRequestReply): Promise<void> {

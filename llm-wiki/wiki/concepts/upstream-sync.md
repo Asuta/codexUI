@@ -28,7 +28,7 @@ Imported upstream feature groups:
 
 - New chat GitHub clone action and unified project setup modal.
 - Logged-out Composio preview refresh.
-- Older thread message loading fixes, adapted to this fork's cursor-based pagination.
+- Older thread message loading fixes. The fork's cursor-based `thread/turns/list` conversation loading experiment was later removed, so this area now follows upstream's `thread-turn-page` / `beforeTurnId` behavior.
 - Project-scoped cron automation management, automation panel, sidebar counts, target picker, create/edit flows, and cron metadata preservation.
 - Codex CLI missing runtime error banner.
 - Error-triggered feedback diagnostics, native mailto feedback links, visible page text, browser state, and chat turn error feedback actions.
@@ -46,8 +46,11 @@ Preserved fork-specific behavior:
 - FRP/public proxy support.
 - Tunnel-safe local image URLs.
 - Fork-local dev wrapper and Vite allowlist behavior.
-- Existing cursor-based older-thread pagination where upstream's before-turn implementation overlapped.
 - Fork-specific test documentation history during `tests.md` conflicts.
+
+Later convergence note:
+
+- After this sync, conversation data loading was changed back to upstream behavior. Future syncs should not preserve the removed fork-specific `thread/turns/list` cursor pagination path; preserve only the tunnel/FRP/local-image proxy behavior when these areas overlap.
 
 Verification:
 
@@ -73,7 +76,6 @@ Preserved fork-specific behavior:
 - FRP/public proxy support.
 - Tunnel-safe local image URLs.
 - Fork-local dev wrapper and Vite allowlist behavior.
-- Existing paged historical thread hydration.
 - Fork-specific test documentation history.
 
 Skipped upstream history:

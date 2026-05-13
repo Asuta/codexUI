@@ -45,8 +45,10 @@
     "FRP/public proxy support",
     "tunnel-safe local image URLs",
     "fork-local dev wrapper and Vite allowlist behavior",
-    "paged historical thread hydration",
     "fork-specific tests.md history"
+  ],
+  "convergedToUpstreamAreas": [
+    "conversation data loading and older-message pagination now follow upstream thread-turn-page/beforeTurnId behavior instead of the fork cursor-based thread/turns/list implementation"
   ],
   "skippedUpstreamAreas": [
     "reverted project recency and mobile move mode",

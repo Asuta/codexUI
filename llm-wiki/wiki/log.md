@@ -60,3 +60,4 @@
 - Updated Automations panel notes for active/newest sorting and direct edit buttons.
 - Updated project cron automation notes for absolute cwd validation and multi-cwd preservation.
 - 2026-05-13: Recorded selective upstream sync through `friuns2/codexui` commit `1c9dacd`; updated `.agents/upstream-sync-state.json`, `concepts/upstream-sync.md`, and added raw snapshot `raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md`.
+- 2026-05-13: Recorded conversation-loading convergence back to upstream `thread-turn-page` / `beforeTurnId` behavior while preserving FRP/public proxy and tunnel-safe local image URL behavior.

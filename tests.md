@@ -325,7 +325,7 @@ Rollback/cleanup:
 9. Repeat steps 1 through 8 in dark theme.
 
 #### Expected Results
-- New upstream features are present without removing this fork's Windows tray, FRP/public proxy, tunnel-safe image URL, dev wrapper, Vite allowlist, or cursor-based older-thread pagination behavior.
+- New upstream features are present without removing this fork's Windows tray, FRP/public proxy, tunnel-safe image URL, dev wrapper, or Vite allowlist behavior.
 - Project automation panel and sidebar controls stay synchronized.
 - Feedback diagnostics include visible page/browser state context and use native mailto handling.
 - Composer fullscreen controls work in light and dark themes.
@@ -4719,10 +4719,37 @@ Opening an existing long thread hydrates only the newest turn page first, then l
 5. Repeat steps 1 through 4 in dark theme.
 
 #### Expected Results
-- Initial open uses `thread/read` metadata plus `thread/turns/list` with a small page size.
+- Initial open uses upstream-compatible `thread/read` trimming plus `/codex-api/thread-turn-page` for older pages.
 - Older turns load only when the user scrolls upward or clicks the load button.
 - Generated-image payloads in paged responses still render through `/codex-local-image?p=...`.
-- If `thread/turns/list` is unavailable, the thread still opens through the full `thread/read` fallback.
+- The removed fork-specific `thread/turns/list` cursor loader is not required for historical thread loading.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
+### Conversation loading upstream convergence
+
+#### Feature/Change Name
+Conversation data loading uses upstream older-message pagination while preserving tunnel-safe local image URLs.
+
+#### Prerequisites/Setup
+1. Dev server running on `http://127.0.0.1:4173`.
+2. A historical thread with more than 10 turns is available.
+3. Light theme and dark theme are available.
+
+#### Steps
+1. In light theme, open the historical thread and confirm the newest messages appear.
+2. Scroll near the top or click `Load earlier messages`.
+3. Confirm the older page loads through `/codex-api/thread-turn-page` using `beforeTurnId`, without duplicate rows or scroll jumps.
+4. Confirm generated or local images in the loaded messages still use `/codex-local-image?p=...` or legacy `/codex-local-image?path=...`.
+5. Repeat steps 1 through 4 in dark theme.
+
+#### Expected Results
+- Conversation loading does not call the removed fork-specific `thread/turns/list` cursor loader.
+- Older messages are prepended by upstream-compatible `thread-turn-page` behavior.
+- Tunnel-safe local images continue to render in both light and dark themes.
 
 #### Rollback/Cleanup
 - None.

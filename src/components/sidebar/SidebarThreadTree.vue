@@ -499,16 +499,6 @@
             <button
               class="chats-section-action"
               type="button"
-              :aria-pressed="filterActive"
-              :aria-label="filterActive ? t('Hide chat filters') : t('Filter chats')"
-              :title="filterActive ? t('Hide chat filters') : t('Filter chats')"
-              @click.stop="$emit('toggle-filter')"
-            >
-              <IconTablerFilter class="thread-icon" />
-            </button>
-            <button
-              class="chats-section-action"
-              type="button"
               :aria-label="t('New chat')"
               :title="t('New chat')"
               @click.stop="$emit('start-new-chat')"
@@ -519,7 +509,7 @@
         </template>
       </SidebarMenuRow>
 
-      <p v-if="isChatsSectionExpanded && allChatThreads.length === 0" class="thread-tree-no-results">{{ t('No chats') }}</p>
+      <p v-if="isChatsSectionExpanded && chatThreads.length === 0" class="thread-tree-no-results">{{ t('No chats') }}</p>
       <ul v-else-if="isChatsSectionExpanded" class="thread-list thread-list-global">
         <li
           v-for="thread in visibleChatThreads"
@@ -604,8 +594,8 @@
         <template #left>
           <span class="thread-show-more-spacer" />
         </template>
-        <button class="thread-show-more-button" type="button" @click="toggleChatListExpansion">
-          {{ isChatListExpanded ? 'Show less' : 'Show more' }}
+        <button class="thread-show-more-button" type="button" @click="toggleChatsListExpansion">
+          {{ isChatsListExpanded ? 'Show less' : 'Show more' }}
         </button>
       </SidebarMenuRow>
     </section>
@@ -901,7 +891,6 @@ import IconTablerFolder from '../icons/IconTablerFolder.vue'
 import IconTablerFolderOpen from '../icons/IconTablerFolderOpen.vue'
 import IconTablerGitFork from '../icons/IconTablerGitFork.vue'
 import IconTablerBolt from '../icons/IconTablerBolt.vue'
-import IconTablerFilter from '../icons/IconTablerFilter.vue'
 import IconTablerTrash from '../icons/IconTablerTrash.vue'
 import { useUiLanguage } from '../../composables/useUiLanguage'
 import { useFeedbackDiagnostics } from '../../composables/useFeedbackDiagnostics'
@@ -919,7 +908,6 @@ const props = defineProps<{
   isThreadListFullyLoaded: boolean
   searchQuery: string
   searchMatchedThreadIds: string[] | null
-  filterActive: boolean
 }>()
 
 const { t } = useUiLanguage()
@@ -940,7 +928,6 @@ const emit = defineEmits<{
   'export-thread': [threadId: string]
   'fork-thread': [threadId: string]
   'start-new-chat': []
-  'toggle-filter': []
   'automations-changed': []
 }>()
 
@@ -988,7 +975,6 @@ type AutomationScheduleDraft = {
 
 const DRAG_START_THRESHOLD_PX = 4
 const PROJECT_GROUP_EXPANDED_GAP_PX = 6
-const CHAT_PREVIEW_LIMIT = 10
 const SECTION_EXPANSION_STORAGE_KEY = 'codex-web-local.sidebar-section-expansion.v1'
 const CHATS_FIRST_STORAGE_KEY = 'codex-web-local.sidebar-chats-first.v1'
 const CHAT_SORT_MODE_STORAGE_KEY = 'codex-web-local.sidebar-chat-sort-mode.v1'
@@ -997,7 +983,7 @@ const collapsedProjects = ref<Record<string, boolean>>({})
 const isPinnedSectionExpanded = ref(true)
 const isProjectsSectionExpanded = ref(true)
 const isChatsSectionExpanded = ref(true)
-const isChatListExpanded = ref(false)
+const isChatsListExpanded = ref(false)
 const showChatsFirst = ref(loadBooleanStorage(CHATS_FIRST_STORAGE_KEY, false))
 const chatSortMode = ref<ChatSortMode>(loadChatSortMode())
 let hasLoadedPinnedThreadState = false
@@ -1282,7 +1268,7 @@ const globalThreads = computed<UiThread[]>(() => {
   })
 })
 
-const allChatThreads = computed(() => {
+const chatThreads = computed(() => {
   const rows = globalThreads.value.filter((thread) => isProjectlessChatPath(thread.cwd))
   const timestampKey = chatSortMode.value === 'created' ? 'createdAtIso' : 'updatedAtIso'
   return rows
@@ -1294,13 +1280,13 @@ const allChatThreads = computed(() => {
 })
 
 const visibleChatThreads = computed(() => {
-  if (isSearchActive.value || isChatListExpanded.value) return allChatThreads.value
-  return allChatThreads.value.slice(0, CHAT_PREVIEW_LIMIT)
+  if (isSearchActive.value) return chatThreads.value
+  return isChatsListExpanded.value ? chatThreads.value : chatThreads.value.slice(0, 10)
 })
 
 const hasHiddenChatThreads = computed(() => {
   if (isSearchActive.value) return false
-  return allChatThreads.value.length > CHAT_PREVIEW_LIMIT
+  return chatThreads.value.length > 10
 })
 
 const threadById = computed(() => {
@@ -1446,10 +1432,6 @@ function toggleProjectsSection(): void {
 
 function toggleChatsSection(): void {
   isChatsSectionExpanded.value = !isChatsSectionExpanded.value
-}
-
-function toggleChatListExpansion(): void {
-  isChatListExpanded.value = !isChatListExpanded.value
 }
 
 const projectedDropProjectIndex = computed<number | null>(() => {
@@ -2349,6 +2331,10 @@ function toggleProjectExpansion(projectName: string): void {
     ...expandedProjects.value,
     [projectName]: !isExpanded(projectName),
   }
+}
+
+function toggleChatsListExpansion(): void {
+  isChatsListExpanded.value = !isChatsListExpanded.value
 }
 
 function toggleProjectCollapse(projectName: string): void {
