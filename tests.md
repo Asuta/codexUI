@@ -332,6 +332,7 @@ Rollback/cleanup:
 - Fresh install, no-auth, and OpenCode Zen startup paths remain usable.
 - `pnpm exec vue-tsc --noEmit` passes.
 - `pnpm run test:unit` passes with 13 files and 85 tests.
+- `PROFILE_BASE_URL=http://127.0.0.1:4173 PROFILE_WAIT_MS=7000 pnpm run profile:browser` reports no warnings and no duplicate startup calls for thread list, skills list, rate limits, or provider models.
 
 #### Rollback/Cleanup
 - Revert the sync branch merge or reset to the pre-sync main commit if the full upstream sync needs to be backed out.

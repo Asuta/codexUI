@@ -63,6 +63,23 @@
       "result": "passed",
       "testFiles": 13,
       "tests": 85
+    },
+    "performance": {
+      "command": "PROFILE_BASE_URL=http://127.0.0.1:4173 PROFILE_WAIT_MS=7000 pnpm run profile:browser",
+      "result": "passed",
+      "report": "output/playwright/browser-runtime-profile-home-2026-05-13T03-40-22-637Z.json",
+      "warnings": 0,
+      "totalApiKB": 173.6,
+      "duplicateCounts": {
+        "threadList": 1,
+        "threadListFirstPage": 1,
+        "threadListCursor": 0,
+        "threadResume": 0,
+        "threadRead": 0,
+        "skillsList": 1,
+        "rateLimitsRead": 1,
+        "providerModels": 1
+      }
     }
   },
   "nextSyncCommandHint": "git fetch upstream --prune && git log --reverse --no-merges 1c9dacdc479de0021873536b9b768e53eefa4ff0..upstream/main"

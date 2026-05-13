@@ -53,6 +53,7 @@ Verification:
 
 - `pnpm exec vue-tsc --noEmit`: passed.
 - `pnpm run test:unit`: passed, 13 files and 85 tests.
+- `PROFILE_BASE_URL=http://127.0.0.1:4173 PROFILE_WAIT_MS=7000 pnpm run profile:browser`: passed with no warnings, `totalApiKB` 173.6, one first-page `thread/list`, one `skills/list`, one `account/rateLimits/read`, and one `/codex-api/provider-models`.
 
 ## 2026-05-10 Sync Summary
 
