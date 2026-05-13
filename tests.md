@@ -57,6 +57,39 @@ This file tracks manual regression and feature verification steps.
 #### Rollback/Cleanup
 - Remove any test automations from the thread automation dialog or delete their folders under `$CODEX_HOME/automations/<automation-id>/`.
 
+### Feature: Project automations and `/automations` panel
+
+#### Prerequisites
+- App is running from this repository.
+- At least two sidebar projects have absolute workspace paths.
+- Local Codex home is writable (`$CODEX_HOME` or `~/.codex`).
+- Light and dark themes are both available from Settings.
+
+#### Steps
+1. In light theme, open a project overflow menu for a project without an attached automation.
+2. Confirm the menu shows `Add automation…`, then create a project automation with a name, prompt, RRULE schedule, and status.
+3. Confirm the project row shows an automation chip and the same menu changes to `Manage automations…`.
+4. Open `/automations` from the sidebar and confirm the new project automation appears with the visible project display name.
+5. Edit the automation from `/automations`, change its name and status, save, and confirm the project row chip count and tooltip update without a full page refresh.
+6. Seed or keep a cron automation record whose `cwds` contains two project paths, then edit it from one project and confirm both project rows show the updated name/status.
+7. Seed a cron automation record with a TOML-style single-quoted `cwds` array such as `cwds = ['/tmp/project-one', '/tmp/project,two']`, refresh `/automations`, and confirm it is still listed.
+8. Inspect `/codex-api/project-automations` for the seeded record and confirm the response includes public automation fields but not `extraTomlLines`.
+9. Remove one project that has an attached automation while `/automations` is open and confirm the panel removes the deleted project row after the cleanup completes.
+10. Switch to dark theme and repeat opening the project menu and `/automations`; confirm rows, chips, buttons, inputs, and empty states remain readable.
+
+#### Expected Results
+- Project-scoped cron automations are listed under every associated `cwd`.
+- Editing a multi-`cwd` project automation refreshes all affected sidebar chips/tooltips, not only the currently edited project.
+- Existing TOML cron records with valid non-JSON string arrays remain visible and manageable.
+- Automation API responses do not include internal preserved TOML metadata such as `extraTomlLines`.
+- Removing a project deletes or detaches that project's automation association and refreshes the `/automations` panel.
+- Preserved TOML metadata and table sections remain intact after saving or deleting a project automation.
+- Light and dark theme project automation surfaces remain readable.
+
+#### Rollback/Cleanup
+- Remove any test project automations from the project automation dialog or delete their folders under `$CODEX_HOME/automations/<automation-id>/`.
+- Remove temporary test projects or workspace roots created for verification.
+
 ### Feature: Projectless new chat folders
 
 #### Prerequisites
@@ -83,6 +116,38 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - Delete only the test folders created under `~/Documents/Codex/<YYYY-MM-DD>/`.
+
+## New chat project setup modal
+
+### Feature: Unified create project and GitHub clone modal
+
+Prerequisites/setup:
+- Run the app with access to `git` and network access to `github.com`.
+- Have a small public GitHub repository URL available for testing.
+
+Steps:
+1. Open the app in light theme and navigate to the new chat screen.
+2. Confirm the folder actions show `Select folder` and `Create Project`.
+3. Click `Create Project` and confirm a modal opens with `New project` and `Clone from GitHub` modes.
+4. In `New project`, keep or edit the destination folder, enter a single folder name, and submit.
+5. Confirm the created project folder is selected in the new chat folder selector and appears as a project root.
+6. Reopen the modal, switch to `Clone from GitHub`, paste a valid `https://github.com/<owner>/<repo>` URL, and submit.
+7. Confirm the cloned repository folder is selected in the new chat folder selector and appears as a project root.
+8. Switch the app to dark theme and repeat opening the modal.
+9. Confirm the modal, tabs, inputs, error message, and buttons have readable contrast and stable spacing.
+
+Expected results:
+- New project creation and GitHub cloning share one modal and destination folder field.
+- Created and cloned folders are registered as project roots and selected for the new chat.
+- After cloning, the folder selector immediately includes the cloned project without a full page refresh.
+- Invalid project names or non-GitHub URLs show an inline modal error without changing the selected folder.
+- A stalled clone eventually fails with an error instead of keeping the request open indefinitely.
+- Light and dark themes render the unified modal consistently with the existing new-chat controls.
+
+Rollback/cleanup:
+- Remove the created project folder from the filesystem if it was only used for testing.
+- Remove the cloned repository folder from the filesystem if it was only used for testing.
+- Remove the test projects from the app project list if they are no longer needed.
 
 ### Feature: Empty project new thread action
 
@@ -235,6 +300,42 @@ This file tracks manual regression and feature verification steps.
 
 #### Rollback/Cleanup
 - None.
+
+---
+
+### Selective upstream sync through friuns2/codexui 1c9dacd
+
+#### Feature/Change Name
+2026-05-13 selective upstream sync feature set.
+
+#### Prerequisites/Setup
+1. Dev server can be started with `pnpm run dev --host 127.0.0.1 --port 4173`.
+2. Test data includes at least one long thread, one project with automations, and one environment without Codex CLI/auth for startup error checks.
+3. Light theme and dark theme are both available.
+
+#### Steps
+1. In light theme, open the home route and confirm the new chat project setup modal still offers project creation and GitHub clone entry points.
+2. Open Directory Hub while logged out of Composio and confirm the logged-out preview renders without layout overflow.
+3. Open a long thread and use Load earlier messages until older turns are prepended without duplicate rows or scroll jumps.
+4. Open the Automations route, create or edit a project-scoped automation, then verify the sidebar count/indicator updates and the panel refreshes after save/delete.
+5. Trigger a visible chat turn error and confirm the feedback action can open a native mailto link with diagnostic details.
+6. Expand and collapse the composer with the fullscreen control.
+7. Start in a no-auth or fresh-install state and confirm rate-limit reads do not block the home screen.
+8. With OpenCode Zen active, confirm provider models load on startup and provider-scoped selected model persistence restores the expected model.
+9. Repeat steps 1 through 8 in dark theme.
+
+#### Expected Results
+- New upstream features are present without removing this fork's Windows tray, FRP/public proxy, tunnel-safe image URL, dev wrapper, Vite allowlist, or cursor-based older-thread pagination behavior.
+- Project automation panel and sidebar controls stay synchronized.
+- Feedback diagnostics include visible page/browser state context and use native mailto handling.
+- Composer fullscreen controls work in light and dark themes.
+- Fresh install, no-auth, and OpenCode Zen startup paths remain usable.
+- `pnpm exec vue-tsc --noEmit` passes.
+- `pnpm run test:unit` passes with 13 files and 85 tests.
+- `PROFILE_BASE_URL=http://127.0.0.1:4173 PROFILE_WAIT_MS=7000 pnpm run profile:browser` reports no warnings and no duplicate startup calls for thread list, skills list, rate limits, or provider models.
+
+#### Rollback/Cleanup
+- Revert the sync branch merge or reset to the pre-sync main commit if the full upstream sync needs to be backed out.
 
 ---
 
@@ -3605,6 +3706,7 @@ Playwright browser runtime profiler captures route timing, Codex API network cou
 #### Expected Results
 - The profiler prints final URL, title, total observed time, duplicate request counts, and slowest Codex API calls
 - JSON report includes raw API rows, grouped summaries, Performance API data, and artifact paths
+- JSON report includes `pageState.stillLoadingThreads`; the profiler exits non-zero if the page still contains `Loading threads...` after the thread-loading timeout
 - Screenshot is saved under `output/playwright/browser-runtime-profile-*.png`
 - Trace is saved under `output/playwright/browser-runtime-profile-*-trace.zip`
 
@@ -4814,6 +4916,140 @@ Skills startup sync falls back to a normal `AGENTS.md` file when Windows denies 
 - Startup sync does not fail only because Windows cannot create the symlink.
 - When symlink creation is denied, CodexUI writes a regular fallback `AGENTS.md` file.
 - Skills Hub remains usable in both light and dark themes.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
+### Fresh Docker mobile install does not show rate-limit request failures
+
+#### Feature/Change Name
+Fresh unauthenticated install mobile home screen rate-limit handling.
+
+#### Prerequisites/Setup
+1. Docker is available.
+2. A clean container has this project installed under `/workspace`.
+3. `@openai/codex` is installed in the container.
+4. Container dev server is running with a fresh Codex home:
+   `CODEX_HOME=/tmp/codex-home CODEXUI_CODEX_COMMAND=$(command -v codex) pnpm run dev --host 0.0.0.0 --port 4173`
+5. The container port is mapped to the host, for example `127.0.0.1:4174 -> 4173`.
+
+#### Steps
+1. Open `http://127.0.0.1:4174/` in a mobile viewport such as iPhone 13 `390x664`.
+2. In light theme, wait for the Start new thread home screen to render.
+3. Capture network responses and confirm no `/codex-api/rpc` response fails with `502` for `account/rateLimits/read`.
+4. Confirm the composer renders and the quota UI is simply absent when the fresh `CODEX_HOME` has no authenticated Codex account.
+5. Switch to dark theme and reload the same mobile viewport.
+6. Repeat steps 2 through 4 in dark theme.
+7. Add an `auth.json` containing only `tokens.access_token` and confirm `account/rateLimits/read` is not short-circuited as unauthenticated.
+8. Replace `auth.json` with malformed JSON and confirm the server logs a `[codex-auth] Unable to read Codex auth state` warning while the home screen still renders.
+
+#### Expected Results
+- The fresh mobile home screen renders without a blank page.
+- `account/rateLimits/read` returns an empty result instead of a `502` when no Codex account is authenticated.
+- An access-token-only auth file is treated as authenticated enough to ask Codex for rate limits.
+- Malformed auth files are visible in server logs instead of being silently treated as a normal fresh install.
+- The UI remains usable in light theme and dark theme.
+- No login or account import is required just to load the home screen.
+
+#### Rollback/Cleanup
+- Stop and remove the temporary Docker container, for example `docker rm -f <container-name>`.
+
+---
+
+### Android published CLI loads Codex app-server models through local proxy
+
+#### Feature/Change Name
+Android `codexui-android` startup passes the bound server port to app-server free-mode config.
+
+#### Prerequisites/Setup
+1. Android proot access works through `/Users/igor/Git-projects/codex-web-local-android/andClaw-codex/ssh.sh`.
+2. The published `codexui-android` package version under test is available from npm.
+3. ADB forward maps device port `17923` to local port `17923`.
+
+#### Steps
+1. Start the package in Android proot:
+   `pnpm dlx codexui-android@<version> --port 17923 --no-open --no-tunnel --no-login`
+2. Open `http://127.0.0.1:17923/#/` in the browser.
+3. Call `POST /codex-api/rpc` with `{"method":"config/read","params":{}}`.
+4. Call `POST /codex-api/rpc` with `{"method":"model/list","params":{}}`.
+5. Confirm `/codex-api/provider-models` still returns OpenCode Zen model ids.
+6. Verify the model selector is enabled in light theme and dark theme.
+7. Send `hi` from the home composer and wait for the first assistant reply.
+8. Confirm browser/network logs do not show a `502` for `generate-thread-title` or an empty-rollout `thread/read` during startup.
+
+#### Expected Results
+- `config/read` returns `200` and includes `model_providers.opencode-zen.base_url` pointing at `http://127.0.0.1:17923/codex-api/zen-proxy/v1`.
+- `config/read` includes `model_providers.opencode-zen.wire_api` as `responses`, not `chat`.
+- `model/list` returns `200` with model data instead of `502 codex app-server exited unexpectedly`.
+- The model selector is usable in both light theme and dark theme.
+- A first home-composer message creates a thread and receives a response without visible startup RPC errors.
+
+#### Rollback/Cleanup
+- Stop the temporary Android proot process with `pkill -f codexui-android` if needed.
+
+---
+
+### OpenCode Zen status returns current provider models
+
+#### Feature/Change Name
+OpenCode Zen free-mode status and model discovery consistency.
+
+#### Prerequisites/Setup
+1. Dev server or published CLI server running with no Codex auth so free mode defaults to OpenCode Zen.
+2. Browser can open the home route in light theme and dark theme.
+
+#### Steps
+1. In light theme, open the home route.
+2. Call `GET /codex-api/free-mode/status`.
+3. Call `GET /codex-api/provider-models`.
+4. Confirm both responses report OpenCode Zen data, including `big-pickle` and current Zen model ids such as `deepseek-v4-flash-free` when upstream returns it.
+5. Confirm `/codex-api/free-mode/status` reports `wireApi` as `responses`.
+6. Open the model selector immediately after initial page load and confirm the Zen models are available without first switching providers or refreshing settings.
+7. In Chrome with a previously loaded app version, reload the page and confirm the service worker fetches the new script/style bundle instead of keeping stale cached selector behavior.
+8. With a script/style bundle already cached by the service worker, temporarily make the same script/style request return HTTP 404 or 500 and reload.
+9. Switch to dark theme and repeat steps 1 through 8.
+
+#### Expected Results
+- Free-mode status does not expose stale OpenRouter cached model ids when `provider` is `opencode-zen`.
+- OpenCode Zen uses `responses`, not `chat`, in saved/default UI state.
+- Provider model discovery and status agree on the model list source.
+- Initial startup model loading uses the active provider context and does not leave GPT-only `model/list` entries as the visible selector list for OpenCode Zen.
+- Selected model ids persist to localStorage by thread/provider context; legacy/global selected-model keys cannot choose a model for OpenCode Zen, while a valid provider-scoped OpenCode Zen saved choice is restored.
+- Service-worker script/style cache invalidation does not keep Chrome on an older model-selector bundle after a new local build is served.
+- Service-worker script/style fetches still use a cached bundle if the network request resolves with a non-OK HTTP status.
+- Model selector content remains usable in light theme and dark theme.
+
+#### Rollback/Cleanup
+- None.
+
+---
+
+### Thread conversation loads earlier turns on demand
+
+#### Feature/Change Name
+Thread conversation incremental older-turn loading.
+
+#### Prerequisites/Setup
+1. Dev server running (`pnpm run dev --host 127.0.0.1 --port 4173`)
+2. A thread with more than 10 turns is available
+3. Light theme and dark theme both available from the appearance switcher
+
+#### Steps
+1. In light theme, open a thread that has more than 10 turns.
+2. Confirm the newest messages render first and the conversation shows the Load earlier messages control at the top.
+3. Click Load earlier messages once.
+4. Confirm an older batch is prepended above the previously first visible turn and the scroll position stays near the same content.
+5. Continue clicking Load earlier messages until the control disappears.
+6. Confirm the oldest messages in the thread are visible and no duplicate message rows are introduced.
+7. Switch to dark theme and repeat steps 1-6 on the same thread or another long thread.
+
+#### Expected Results
+- Initial thread open remains bounded to the latest turn page.
+- Load earlier messages fetches older persisted turns from the local bridge instead of only revealing already-loaded messages.
+- The control remains available while older persisted turns exist and disappears after the first turn is loaded.
+- Message ordering, turn actions, and scroll restoration remain stable in light and dark themes.
 
 #### Rollback/Cleanup
 - None.

@@ -53,3 +53,10 @@
 - Added machine-readable state: `.agents/upstream-sync-state.json`.
 - Documents: upstream commit cursor `a26c4cc`, imported feature groups, preserved fork behavior, skipped upstream areas, and verification commands for the 2026-05-10 sync.
 - Updated `index.md`.
+## 2026-05-10
+
+- Added project cron automation notes for sidebar project-level automation management.
+- Updated project cron automation notes for the combined Automations panel.
+- Updated Automations panel notes for active/newest sorting and direct edit buttons.
+- Updated project cron automation notes for absolute cwd validation and multi-cwd preservation.
+- 2026-05-13: Recorded selective upstream sync through `friuns2/codexui` commit `1c9dacd`; updated `.agents/upstream-sync-state.json`, `concepts/upstream-sync.md`, and added raw snapshot `raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md`.

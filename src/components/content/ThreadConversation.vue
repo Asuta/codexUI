@@ -14,10 +14,10 @@
         <button
           type="button"
           class="load-more-button"
-          :disabled="isLoadingMore"
+          :disabled="isLoadingMore || isLoadingOlderMessages"
           @click="loadMoreAbove"
         >
-          {{ isLoadingMore ? 'Loading…' : 'Load earlier messages' }}
+          {{ isLoadingMore || isLoadingOlderMessages ? 'Loading...' : 'Load earlier messages' }}
         </button>
       </li>
       <template v-for="message in visibleMessages" :key="message.id">
@@ -697,7 +697,10 @@
               >
                 {{ liveOverlay.reasoningText }}
               </p>
-              <p v-if="liveOverlay.errorText" class="live-overlay-error">{{ liveOverlay.errorText }}</p>
+              <div v-if="liveOverlay.errorText" class="live-overlay-error">
+                <span>{{ liveOverlay.errorText }}</span>
+                <a class="live-overlay-feedback" :href="feedbackMailto" @click="prepareLiveErrorFeedback($event, liveOverlay.errorText)">Send feedback</a>
+              </div>
             </article>
           </div>
         </div>
@@ -870,6 +873,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { UiFileChange, UiLiveOverlay, UiMessage, UiPlanStep, UiServerRequest } from '../../types/codex'
+import { useFeedbackDiagnostics } from '../../composables/useFeedbackDiagnostics'
 import { useMobile } from '../../composables/useMobile'
 
 import IconTablerArrowUp from '../icons/IconTablerArrowUp.vue'
@@ -895,6 +899,16 @@ const fileLinkContextMenuY = ref(0)
 const fileLinkContextBrowseUrl = ref('')
 const fileLinkContextEditUrl = ref('')
 const { isMobile } = useMobile()
+const { buildFeedbackMailto, recordVisibleFailure } = useFeedbackDiagnostics()
+const feedbackMailto = computed(() => buildFeedbackMailto())
+
+function prepareLiveErrorFeedback(event: MouseEvent, message: string): void {
+  recordVisibleFailure(message)
+  const target = event.currentTarget
+  if (target instanceof HTMLAnchorElement) {
+    target.href = buildFeedbackMailto()
+  }
+}
 
 function parsePlanFromMessageText(text: string): { explanation: string; steps: UiPlanStep[] } | null {
   const normalized = text.replace(/\r\n/g, '\n').trim()
@@ -1246,7 +1260,7 @@ const emit = defineEmits<{
   forkThread: [payload: { threadId: string; turnIndex: number }]
   rollback: [payload: { turnId: string }]
   implementPlan: [payload: { turnId: string }]
-  loadOlderMessages: [done: () => void]
+  loadOlderMessages: [payload: { threadId: string; done: () => void }]
   respondServerRequest: [payload: { id: number; result?: unknown; error?: { code?: number; message: string } }]
 }>()
 
@@ -4034,7 +4048,7 @@ function jumpToLatest(): void {
 
 async function loadMoreAbove(): Promise<void> {
   const container = conversationListRef.value
-  if (!container || !hasMoreAbove.value || isLoadingMore.value) return
+  if (!container || !hasMoreAbove.value || isLoadingMore.value || props.isLoadingOlderMessages === true) return
 
   isLoadingMore.value = true
   const threadIdAtStart = props.activeThreadId
@@ -4042,17 +4056,20 @@ async function loadMoreAbove(): Promise<void> {
   const prevScrollHeight = container.scrollHeight
   const prevScrollTop = container.scrollTop
 
-  if (renderWindowStart.value > 0) {
-    renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
-  } else if (props.canLoadOlderMessages === true) {
-    await new Promise<void>((resolve) => emit('loadOlderMessages', resolve))
-  }
+  try {
+    if (renderWindowStart.value > 0) {
+      renderWindowStart.value = Math.max(0, renderWindowStart.value - LOAD_MORE_CHUNK)
+    } else if (props.canLoadOlderMessages === true) {
+      await new Promise<void>((resolve) => emit('loadOlderMessages', { threadId: threadIdAtStart, done: resolve }))
+    }
 
-  await nextTick()
+    await nextTick()
 
-  // Discard scroll restoration if the thread changed while we were awaiting.
-  if (props.activeThreadId === threadIdAtStart) {
-    container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
+    // Discard scroll restoration if the thread changed while we were awaiting.
+    if (props.activeThreadId === threadIdAtStart) {
+      container.scrollTop = prevScrollTop + (container.scrollHeight - prevScrollHeight)
+    }
+  } finally {
     isLoadingMore.value = false
   }
 }
@@ -4434,7 +4451,11 @@ onBeforeUnmount(() => {
 }
 
 .live-overlay-error {
-  @apply m-0 text-sm leading-5 text-rose-600 whitespace-pre-wrap;
+  @apply m-0 flex items-start justify-between gap-3 text-sm leading-5 text-rose-600 whitespace-pre-wrap;
+}
+
+.live-overlay-feedback {
+  @apply shrink-0 rounded-full border border-rose-200 bg-white px-2.5 py-1 text-xs font-semibold leading-none text-rose-700 transition hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-300;
 }
 
 .message-body {

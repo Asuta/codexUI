@@ -67,11 +67,13 @@
 ## PR Review Bot Workflow (MANDATORY)
 
 - Treat Qodo and other review-bot comments as advisory findings, not authoritative fix instructions.
+- When the user asks to update a PR and request review, first push the current branch, update the PR summary/verification notes when they changed, then post a plain PR comment containing exactly `/review`.
+- Do not use a draft review, pending review, or batch review technique to trigger Qodo; Qodo review requests should be ordinary PR comments.
+- After posting `/review`, wait for or re-check bot comments/status when the user asks to wait, continue, or check comments.
 - Before applying a suggested review-bot fix, inspect the relevant code path and decide whether the reported behavior is technically correct.
 - Reproduce the issue with a focused test when feasible; if direct reproduction is impractical, document the exact reasoning and code evidence used to accept or reject the finding.
 - Prefer adding or updating a regression test for every accepted review-bot bug before or alongside the fix.
 - Do not patch purely to satisfy a bot comment if the behavior is correct, stale, already fixed, or the proposed change would make the implementation worse.
-- After pushing any commit to an open PR, wait and poll for Qodo/review-bot comments and PR review status for about 30 seconds before reporting the push workflow as complete.
 - After fixing an accepted review-bot finding, run the narrow regression test plus the relevant build/typecheck command, push the commit, and re-check the PR comments/status.
 - In the completion report, distinguish confirmed fixes from stale or rejected bot comments.
 
@@ -151,6 +153,7 @@
   - viewport(s)
   - assertion/result summary
   - screenshot absolute path(s)
+  - inline screenshot image(s) rendered in chat with Markdown image syntax using absolute local paths
   - CJS command/result (when module-loading behavior was changed)
 
 ## Worktree Dev Server Rule
@@ -190,6 +193,7 @@
 
 - When the user asks to test with Playwright, run the verification on the explicitly requested project/thread context (for example `TestChat`).
 - Screenshot artifacts must show complete passing evidence for the tested feature, not only the base page load.
+- Always show captured screenshots inline in the chat, not only as links or filesystem paths. Use Markdown image tags with absolute local paths, for example `![light verification](/absolute/path/output/playwright/example.png)`.
 - For UI work, include dark-theme evidence in addition to the default/light-theme evidence unless the task is explicitly light-only.
 - For refresh-persistence fixes, include a post-refresh screenshot that still shows the expected UI state.
 
@@ -218,6 +222,7 @@
   - exact CJS command/script path
   - assertion summary (`hrefOk`, `titleOk`, `textOk`)
   - screenshot absolute path
+  - inline screenshot image rendered in chat with Markdown image syntax using the absolute screenshot path
 
 ## LLM Wiki Schema
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildWorkspaceRootsProjectOrderState,
   collectWorkspaceRootPathsForProjectRemoval,
@@ -6,9 +6,46 @@ import {
   findAdjacentThreadId,
   isThreadUnreadByLastRead,
   removeThreadFromGroups,
+  useDesktopState,
 } from './useDesktopState'
 import type { UiProjectGroup } from '../types/codex'
 import type { WorkspaceRootsState } from '../api/codexGateway'
+
+const gatewayMocks = vi.hoisted(() => ({
+  archiveThread: vi.fn(),
+  forkThread: vi.fn(),
+  getAccountRateLimits: vi.fn(),
+  getAvailableCollaborationModes: vi.fn(),
+  getAvailableModelIds: vi.fn(),
+  getCurrentModelConfig: vi.fn(),
+  getPendingServerRequests: vi.fn(),
+  getSkillsList: vi.fn(),
+  getThreadDetail: vi.fn(),
+  getThreadGroupsPage: vi.fn(),
+  getThreadQueueState: vi.fn(),
+  getThreadTitleCache: vi.fn(),
+  getWorkspaceRootsState: vi.fn(),
+  generateThreadTitle: vi.fn(),
+  interruptThreadTurn: vi.fn(),
+  persistThreadTitle: vi.fn(),
+  renameThread: vi.fn(),
+  replyToServerRequest: vi.fn(),
+  resumeThread: vi.fn(),
+  revertThreadFileChanges: vi.fn(),
+  rollbackThread: vi.fn(),
+  setCodexSpeedMode: vi.fn(),
+  setThreadQueueState: vi.fn(),
+  setWorkspaceRootsState: vi.fn(),
+  startThread: vi.fn(),
+  startThreadTurn: vi.fn(),
+  subscribeCodexNotifications: vi.fn(),
+}))
+
+vi.mock('../api/codexGateway', () => ({
+  ...gatewayMocks,
+  getBackgroundThreadListLimit: vi.fn(() => 100),
+  pickCodexRateLimitSnapshot: vi.fn(() => null),
+}))
 
 function thread(id: string, cwd: string, options: { hasWorktree?: boolean } = {}) {
   return {
@@ -24,6 +61,34 @@ function thread(id: string, cwd: string, options: { hasWorktree?: boolean } = {}
     inProgress: false,
   }
 }
+
+function installTestWindow(initialStorage: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initialStorage))
+  vi.stubGlobal('window', {
+    localStorage: {
+      getItem: vi.fn((key: string) => store.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        store.set(key, value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        store.delete(key)
+      }),
+    },
+    setTimeout: vi.fn(),
+    clearTimeout: vi.fn(),
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  gatewayMocks.getThreadQueueState.mockResolvedValue({})
+  gatewayMocks.getThreadTitleCache.mockResolvedValue({ titles: {} })
+  gatewayMocks.getWorkspaceRootsState.mockRejectedValue(new Error('no workspace roots state'))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('filterGroupsByWorkspaceRoots', () => {
   it('keeps projectless chats visible when workspace roots are configured', () => {
@@ -323,6 +388,147 @@ describe('thread unread state helpers', () => {
       '2026-05-01T12:45:00.000Z',
       cutoffIso,
     )).toBe(true)
+  })
+})
+
+describe('collaboration mode selection', () => {
+  it('does not carry plan mode from new chats into existing threads', () => {
+    installTestWindow({
+      'codex-web-local.collaboration-mode.v1': 'plan',
+    })
+
+    const state = useDesktopState()
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.setSelectedCollaborationMode('plan')
+
+    expect(state.selectedCollaborationMode.value).toBe('plan')
+    expect(window.localStorage.getItem('codex-web-local.collaboration-mode-by-context.v1')).toBe(null)
+
+    state.primeSelectedThread('thread-a')
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.setSelectedCollaborationMode('plan')
+    state.primeSelectedThread('thread-b')
+
+    expect(state.selectedCollaborationMode.value).toBe('default')
+
+    state.primeSelectedThread('thread-a')
+
+    expect(state.selectedCollaborationMode.value).toBe('plan')
+  })
+})
+
+describe('Codex CLI availability', () => {
+  it('surfaces a chat runtime error when the app-server bridge cannot find Codex CLI', async () => {
+    installTestWindow()
+    gatewayMocks.getThreadGroupsPage.mockRejectedValue(new Error('Codex CLI is not available. Install @openai/codex or set CODEXUI_CODEX_COMMAND.'))
+
+    const state = useDesktopState()
+
+    await state.refreshAll({ awaitAncillaryRefreshes: true })
+
+    expect(state.codexCliMissingError.value).toBe('Codex CLI not found. Install @openai/codex or set CODEXUI_CODEX_COMMAND.')
+  })
+
+  it('clears a previous Codex CLI missing banner when a later refresh fails for another reason', async () => {
+    installTestWindow()
+    gatewayMocks.getThreadGroupsPage
+      .mockRejectedValueOnce(new Error('Codex CLI is not available. Install @openai/codex or set CODEXUI_CODEX_COMMAND.'))
+      .mockRejectedValueOnce(new Error('Connection lost'))
+
+    const state = useDesktopState()
+
+    await state.refreshAll({ awaitAncillaryRefreshes: true })
+    expect(state.codexCliMissingError.value).toBe('Codex CLI not found. Install @openai/codex or set CODEXUI_CODEX_COMMAND.')
+
+    await state.refreshAll({ awaitAncillaryRefreshes: true })
+    expect(state.error.value).toBe('Connection lost')
+    expect(state.codexCliMissingError.value).toBe('')
+  })
+})
+
+describe('provider model selection', () => {
+  it('ignores global selected-model localStorage when OpenCode Zen is the active provider', async () => {
+    installTestWindow({
+      'codex-web-local.selected-model-by-context.v1': JSON.stringify({
+        '__new-thread__': 'gpt-5.5',
+      }),
+      'codex-web-local.selected-model-id.v1': 'gpt-5.5',
+    })
+    gatewayMocks.getThreadGroupsPage.mockResolvedValue({ groups: [], nextCursor: null })
+    gatewayMocks.getAvailableCollaborationModes.mockResolvedValue([{ value: 'default', label: 'Default' }])
+    gatewayMocks.getSkillsList.mockResolvedValue([])
+    gatewayMocks.getAccountRateLimits.mockResolvedValue(null)
+    gatewayMocks.getCurrentModelConfig.mockResolvedValue({
+      model: 'big-pickle',
+      providerId: 'opencode-zen',
+      reasoningEffort: 'medium',
+      speedMode: 'standard',
+    })
+    gatewayMocks.getAvailableModelIds.mockResolvedValue([
+      'big-pickle',
+      'deepseek-v4-flash-free',
+      'ring-2.6-1t-free',
+    ])
+
+    const state = useDesktopState()
+    await state.refreshAll({ includeSelectedThreadMessages: false, awaitAncillaryRefreshes: true })
+
+    expect(gatewayMocks.getAvailableModelIds).toHaveBeenCalledWith({
+      includeProviderModels: true,
+      requireProviderModels: true,
+    })
+    expect(state.availableModelIds.value).toEqual([
+      'big-pickle',
+      'deepseek-v4-flash-free',
+      'ring-2.6-1t-free',
+    ])
+    expect(state.selectedModelId.value).toBe('big-pickle')
+    expect(state.readModelIdForThread('').trim()).toBe('big-pickle')
+    expect(JSON.parse(window.localStorage.getItem('codex-web-local.selected-model-by-context.v1') ?? '{}')).toEqual({
+      '__new-thread-provider__::opencode-zen': 'big-pickle',
+    })
+    expect(window.localStorage.getItem('codex-web-local.selected-model-id.v1')).toBe(null)
+  })
+
+  it('restores a valid provider-scoped OpenCode Zen selected model from localStorage', async () => {
+    installTestWindow({
+      'codex-web-local.selected-model-by-context.v1': JSON.stringify({
+        '__new-thread-provider__::opencode-zen': 'ring-2.6-1t-free',
+      }),
+    })
+    gatewayMocks.getThreadGroupsPage.mockResolvedValue({ groups: [], nextCursor: null })
+    gatewayMocks.getAvailableCollaborationModes.mockResolvedValue([{ value: 'default', label: 'Default' }])
+    gatewayMocks.getSkillsList.mockResolvedValue([])
+    gatewayMocks.getAccountRateLimits.mockResolvedValue(null)
+    gatewayMocks.getCurrentModelConfig.mockResolvedValue({
+      model: 'big-pickle',
+      providerId: 'opencode-zen',
+      reasoningEffort: 'medium',
+      speedMode: 'standard',
+    })
+    gatewayMocks.getAvailableModelIds.mockResolvedValue([
+      'big-pickle',
+      'deepseek-v4-flash-free',
+      'ring-2.6-1t-free',
+    ])
+
+    const state = useDesktopState()
+    await state.refreshAll({ includeSelectedThreadMessages: false, awaitAncillaryRefreshes: true })
+
+    expect(state.availableModelIds.value).toEqual([
+      'big-pickle',
+      'deepseek-v4-flash-free',
+      'ring-2.6-1t-free',
+    ])
+    expect(state.selectedModelId.value).toBe('ring-2.6-1t-free')
+    expect(state.readModelIdForThread('').trim()).toBe('ring-2.6-1t-free')
+    expect(JSON.parse(window.localStorage.getItem('codex-web-local.selected-model-by-context.v1') ?? '{}')).toEqual({
+      '__new-thread-provider__::opencode-zen': 'ring-2.6-1t-free',
+    })
   })
 })
 
