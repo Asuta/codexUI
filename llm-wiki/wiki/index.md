@@ -28,3 +28,4 @@
 - [../raw/fixes/opencode-zen-big-pickle-codex-cli.md](../raw/fixes/opencode-zen-big-pickle-codex-cli.md): Big Pickle + Codex CLI fix details.
 - [../raw/fixes/opencode-zen-reasoning-content-proxy.md](../raw/fixes/opencode-zen-reasoning-content-proxy.md): Codex Web Local Zen proxy reasoning_content round-trip fix and Docker verification.
 - [../raw/upstream-sync/2026-05-10-friuns2-a26c4cc.md](../raw/upstream-sync/2026-05-10-friuns2-a26c4cc.md): immutable source snapshot for the 2026-05-10 selective upstream sync through `friuns2/codexui` commit `a26c4cc`.
+- [../raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md](../raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md): immutable source snapshot for the 2026-05-13 selective upstream sync through `friuns2/codexui` commit `1c9dacd`.

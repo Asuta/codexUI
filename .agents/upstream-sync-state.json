@@ -1,13 +1,13 @@
 {
   "upstream": "https://github.com/friuns2/codexui.git",
   "forkRemote": "https://github.com/Asuta/codexUI.git",
-  "lastSyncedUpstreamCommit": "a26c4ccbef4212d0d816f391c075a253ac0ccfdc",
-  "lastSyncedUpstreamShortCommit": "a26c4cc",
+  "lastSyncedUpstreamCommit": "1c9dacdc479de0021873536b9b768e53eefa4ff0",
+  "lastSyncedUpstreamShortCommit": "1c9dacd",
   "lastSyncMergeBase": "3e1fa11286751e825bf87ea22cda636b3a7e4ac8",
-  "lastSyncLocalStartCommit": "fc912d37a537695055769d67e12d2aece388d820",
-  "lastSyncResultCommit": "ef5af1945a81cd30abf9882edddc9235f593daaa",
-  "lastSyncBranch": "codex/upstream-sync-20260510-164819",
-  "lastSyncDate": "2026-05-10",
+  "lastSyncLocalStartCommit": "c5bdbdb193b32d4cf12682177e0c14d836407f82",
+  "lastSyncResultCommit": "65a1189359dbfc645123bf0c38f959946d5dc0ba",
+  "lastSyncBranch": "codex/upstream-sync-20260513-111313",
+  "lastSyncDate": "2026-05-13",
   "syncedFeatureGroups": [
     "backticked markdown file-link labels",
     "terminal quick command dropdown",
@@ -24,7 +24,21 @@
     "OpenCode Zen reasoning-content proxy preservation",
     "startup status probe reduction",
     "debug launcher hardening",
-    "PR review bot and performance audit workflow notes"
+    "PR review bot and performance audit workflow notes",
+    "new chat GitHub clone and unified project setup modal",
+    "Composio logged-out preview refresh",
+    "older thread messages on-demand loading fixes",
+    "project-scoped cron automation management panel",
+    "automation sidebar counts, target picker, editing, and cron metadata preservation",
+    "Codex CLI missing runtime error banner",
+    "error-triggered feedback diagnostics and mailto feedback actions",
+    "fullscreen composer expansion",
+    "item/reasoning/textDelta notification handling",
+    "fresh install rate-limit and no-auth startup smoothing",
+    "OpenCode Zen provider model startup refresh and provider-scoped selected model persistence",
+    "service worker static asset fallback on bad responses",
+    "profiler failure when threads are still loading",
+    "Qodo review trigger workflow notes"
   ],
   "preservedForkFeatures": [
     "Windows tray launcher",
@@ -47,15 +61,9 @@
     "unit": {
       "command": "pnpm run test:unit",
       "result": "passed",
-      "testFiles": 12,
-      "tests": 63
-    },
-    "focusedUnit": {
-      "command": "pnpm exec vitest run src/api/normalizers/v2.test.ts src/components/sidebar/pinnedThreadUtils.test.ts src/server/codexAppServerBridge.archive.test.ts src/server/codexAppServerBridge.inlinePayload.test.ts src/server/freeMode.test.ts src/server/unifiedResponsesProxy.test.ts src/composables/useDesktopState.test.ts",
-      "result": "passed",
-      "testFiles": 7,
-      "tests": 46
+      "testFiles": 13,
+      "tests": 85
     }
   },
-  "nextSyncCommandHint": "git fetch upstream --prune && git log --reverse --no-merges a26c4ccbef4212d0d816f391c075a253ac0ccfdc..upstream/main"
+  "nextSyncCommandHint": "git fetch upstream --prune && git log --reverse --no-merges 1c9dacdc479de0021873536b9b768e53eefa4ff0..upstream/main"
 }

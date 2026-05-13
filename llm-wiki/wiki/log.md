@@ -59,3 +59,4 @@
 - Updated project cron automation notes for the combined Automations panel.
 - Updated Automations panel notes for active/newest sorting and direct edit buttons.
 - Updated project cron automation notes for absolute cwd validation and multi-cwd preservation.
+- 2026-05-13: Recorded selective upstream sync through `friuns2/codexui` commit `1c9dacd`; updated `.agents/upstream-sync-state.json`, `concepts/upstream-sync.md`, and added raw snapshot `raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md`.

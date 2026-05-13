@@ -303,6 +303,41 @@ Rollback/cleanup:
 
 ---
 
+### Selective upstream sync through friuns2/codexui 1c9dacd
+
+#### Feature/Change Name
+2026-05-13 selective upstream sync feature set.
+
+#### Prerequisites/Setup
+1. Dev server can be started with `pnpm run dev --host 127.0.0.1 --port 4173`.
+2. Test data includes at least one long thread, one project with automations, and one environment without Codex CLI/auth for startup error checks.
+3. Light theme and dark theme are both available.
+
+#### Steps
+1. In light theme, open the home route and confirm the new chat project setup modal still offers project creation and GitHub clone entry points.
+2. Open Directory Hub while logged out of Composio and confirm the logged-out preview renders without layout overflow.
+3. Open a long thread and use Load earlier messages until older turns are prepended without duplicate rows or scroll jumps.
+4. Open the Automations route, create or edit a project-scoped automation, then verify the sidebar count/indicator updates and the panel refreshes after save/delete.
+5. Trigger a visible chat turn error and confirm the feedback action can open a native mailto link with diagnostic details.
+6. Expand and collapse the composer with the fullscreen control.
+7. Start in a no-auth or fresh-install state and confirm rate-limit reads do not block the home screen.
+8. With OpenCode Zen active, confirm provider models load on startup and provider-scoped selected model persistence restores the expected model.
+9. Repeat steps 1 through 8 in dark theme.
+
+#### Expected Results
+- New upstream features are present without removing this fork's Windows tray, FRP/public proxy, tunnel-safe image URL, dev wrapper, Vite allowlist, or cursor-based older-thread pagination behavior.
+- Project automation panel and sidebar controls stay synchronized.
+- Feedback diagnostics include visible page/browser state context and use native mailto handling.
+- Composer fullscreen controls work in light and dark themes.
+- Fresh install, no-auth, and OpenCode Zen startup paths remain usable.
+- `pnpm exec vue-tsc --noEmit` passes.
+- `pnpm run test:unit` passes with 13 files and 85 tests.
+
+#### Rollback/Cleanup
+- Revert the sync branch merge or reset to the pre-sync main commit if the full upstream sync needs to be backed out.
+
+---
+
 ### Unread thread cutoff state
 
 #### Feature/Change Name

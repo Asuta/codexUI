@@ -5,21 +5,54 @@ This page tracks selective synchronization from `friuns2/codexui` into this fork
 Source snapshots:
 
 - [2026-05-10 friuns2/codexui a26c4cc](../../raw/upstream-sync/2026-05-10-friuns2-a26c4cc.md)
+- [2026-05-13 friuns2/codexui 1c9dacd](../../raw/upstream-sync/2026-05-13-friuns2-1c9dacd.md)
 
 ## Current Sync Cursor
 
-- Last synced upstream commit: `a26c4ccbef4212d0d816f391c075a253ac0ccfdc`
-- Local result commit: `ef5af1945a81cd30abf9882edddc9235f593daaa`
-- Local sync branch: `codex/upstream-sync-20260510-164819`
+- Last synced upstream commit: `1c9dacdc479de0021873536b9b768e53eefa4ff0`
+- Local result commit: `65a1189359dbfc645123bf0c38f959946d5dc0ba`
+- Local sync branch: `codex/upstream-sync-20260513-111313`
 - Analysis merge-base: `3e1fa11286751e825bf87ea22cda636b3a7e4ac8`
 
 For the next sync, fetch upstream and inspect only commits after the cursor:
 
 ```bash
 git fetch upstream --prune
-git log --reverse --no-merges a26c4ccbef4212d0d816f391c075a253ac0ccfdc..upstream/main
-git diff --stat a26c4ccbef4212d0d816f391c075a253ac0ccfdc..upstream/main
+git log --reverse --no-merges 1c9dacdc479de0021873536b9b768e53eefa4ff0..upstream/main
+git diff --stat 1c9dacdc479de0021873536b9b768e53eefa4ff0..upstream/main
 ```
+
+## 2026-05-13 Sync Summary
+
+Imported upstream feature groups:
+
+- New chat GitHub clone action and unified project setup modal.
+- Logged-out Composio preview refresh.
+- Older thread message loading fixes, adapted to this fork's cursor-based pagination.
+- Project-scoped cron automation management, automation panel, sidebar counts, target picker, create/edit flows, and cron metadata preservation.
+- Codex CLI missing runtime error banner.
+- Error-triggered feedback diagnostics, native mailto feedback links, visible page text, browser state, and chat turn error feedback actions.
+- Fullscreen composer expansion.
+- Item/reasoning/textDelta notification handling.
+- Fresh install rate-limit handling and no-auth startup smoothing.
+- OpenCode Zen provider model refresh, startup provider model loading, provider-scoped selected model persistence, and `big-pickle` defaulting.
+- Service worker cached static asset fallback on bad responses.
+- Browser profiler failure when thread loading is still active.
+- Qodo review trigger workflow notes.
+
+Preserved fork-specific behavior:
+
+- Windows tray launcher and related files.
+- FRP/public proxy support.
+- Tunnel-safe local image URLs.
+- Fork-local dev wrapper and Vite allowlist behavior.
+- Existing cursor-based older-thread pagination where upstream's before-turn implementation overlapped.
+- Fork-specific test documentation history during `tests.md` conflicts.
+
+Verification:
+
+- `pnpm exec vue-tsc --noEmit`: passed.
+- `pnpm run test:unit`: passed, 13 files and 85 tests.
 
 ## 2026-05-10 Sync Summary
 
