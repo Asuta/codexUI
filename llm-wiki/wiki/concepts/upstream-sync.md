@@ -10,7 +10,7 @@ Source snapshots:
 ## Current Sync Cursor
 
 - Last synced upstream commit: `1c9dacdc479de0021873536b9b768e53eefa4ff0`
-- Local result commit: `65a1189359dbfc645123bf0c38f959946d5dc0ba`
+- Local result commit: `eb4845dab59734835c2e2f89f21f011ae05cefa5`
 - Local sync branch: `codex/upstream-sync-20260513-111313`
 - Analysis merge-base: `3e1fa11286751e825bf87ea22cda636b3a7e4ac8`
 
