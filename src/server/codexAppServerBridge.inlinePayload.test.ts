@@ -224,64 +224,6 @@ describe('thread inline media sanitization', () => {
     expect(existsSync(localImagePathFromProxyUrl(imageUrl))).toBe(true)
   })
 
-  it('keeps every turn while externalizing large inline images', async () => {
-    const turns = Array.from({ length: 12 }, (_, index) => ({
-      id: `turn-${index + 1}`,
-      items: [
-        {
-          id: `generated-${index + 1}`,
-          type: 'imageGeneration',
-          result: pngBase64,
-        },
-      ],
-    }))
-
-    const result = await sanitizeThreadTurnsInlinePayloads('thread/read', {
-      thread: {
-        turns,
-      },
-    }) as {
-      thread: {
-        turns: Array<{
-          id: string
-          items: Array<Record<string, unknown>>
-        }>
-      }
-    }
-
-    expect(result.thread.turns).toHaveLength(12)
-    expect(result.thread.turns[0].id).toBe('turn-1')
-    expect(result.thread.turns.at(-1)?.id).toBe('turn-12')
-    expect(result.thread.turns.every((turn) => turn.items[0].type === 'imageView')).toBe(true)
-  })
-
-  it('externalizes inline images in paged thread turn responses', async () => {
-    const result = await sanitizeThreadTurnsInlinePayloads('thread/turns/list', {
-      data: [
-        {
-          id: 'turn-1',
-          items: [
-            {
-              id: 'generated-1',
-              type: 'imageGeneration',
-              result: pngBase64,
-            },
-          ],
-        },
-      ],
-      nextCursor: 'older-turn',
-    }) as {
-      data: Array<{
-        items: Array<Record<string, unknown>>
-      }>
-      nextCursor: string
-    }
-
-    expect(result.nextCursor).toBe('older-turn')
-    expect(result.data[0].items[0].type).toBe('imageView')
-    expect(existsSync(result.data[0].items[0].path as string)).toBe(true)
-  })
-
   it('does not sanitize inline images for methods without thread turns', async () => {
     const payload = {
       thread: {
