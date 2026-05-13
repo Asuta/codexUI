@@ -54,7 +54,7 @@ frp_0.68.1_windows_amd64.zip
 
 ```toml
 serverAddr = "162.211.183.146"
-serverPort = 443
+serverPort = 4443
 
 auth.method = "token"
 auth.token = "fill in the frps token from the server"
