@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   buildWorkspaceRootsProjectOrderState,
   collectWorkspaceRootPathsForProjectRemoval,
@@ -6,9 +6,46 @@ import {
   findAdjacentThreadId,
   isThreadUnreadByLastRead,
   removeThreadFromGroups,
+  useDesktopState,
 } from './useDesktopState'
 import type { UiProjectGroup } from '../types/codex'
 import type { WorkspaceRootsState } from '../api/codexGateway'
+
+const gatewayMocks = vi.hoisted(() => ({
+  archiveThread: vi.fn(),
+  forkThread: vi.fn(),
+  getAccountRateLimits: vi.fn(),
+  getAvailableCollaborationModes: vi.fn(),
+  getAvailableModelIds: vi.fn(),
+  getCurrentModelConfig: vi.fn(),
+  getPendingServerRequests: vi.fn(),
+  getSkillsList: vi.fn(),
+  getThreadDetail: vi.fn(),
+  getThreadGroupsPage: vi.fn(),
+  getThreadQueueState: vi.fn(),
+  getThreadTitleCache: vi.fn(),
+  getWorkspaceRootsState: vi.fn(),
+  generateThreadTitle: vi.fn(),
+  interruptThreadTurn: vi.fn(),
+  persistThreadTitle: vi.fn(),
+  renameThread: vi.fn(),
+  replyToServerRequest: vi.fn(),
+  resumeThread: vi.fn(),
+  revertThreadFileChanges: vi.fn(),
+  rollbackThread: vi.fn(),
+  setCodexSpeedMode: vi.fn(),
+  setThreadQueueState: vi.fn(),
+  setWorkspaceRootsState: vi.fn(),
+  startThread: vi.fn(),
+  startThreadTurn: vi.fn(),
+  subscribeCodexNotifications: vi.fn(),
+}))
+
+vi.mock('../api/codexGateway', () => ({
+  ...gatewayMocks,
+  getBackgroundThreadListLimit: vi.fn(() => 100),
+  pickCodexRateLimitSnapshot: vi.fn(() => null),
+}))
 
 function thread(id: string, cwd: string, options: { hasWorktree?: boolean } = {}) {
   return {
@@ -24,6 +61,34 @@ function thread(id: string, cwd: string, options: { hasWorktree?: boolean } = {}
     inProgress: false,
   }
 }
+
+function installTestWindow(initialStorage: Record<string, string> = {}) {
+  const store = new Map(Object.entries(initialStorage))
+  vi.stubGlobal('window', {
+    localStorage: {
+      getItem: vi.fn((key: string) => store.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => {
+        store.set(key, value)
+      }),
+      removeItem: vi.fn((key: string) => {
+        store.delete(key)
+      }),
+    },
+    setTimeout: vi.fn(),
+    clearTimeout: vi.fn(),
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  gatewayMocks.getThreadQueueState.mockResolvedValue({})
+  gatewayMocks.getThreadTitleCache.mockResolvedValue({ titles: {} })
+  gatewayMocks.getWorkspaceRootsState.mockRejectedValue(new Error('no workspace roots state'))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('filterGroupsByWorkspaceRoots', () => {
   it('keeps projectless chats visible when workspace roots are configured', () => {

@@ -14,10 +14,10 @@
         <button
           type="button"
           class="load-more-button"
-          :disabled="isLoadingMore || isLoadingPersistedAbove"
+          :disabled="isLoadingMore || isLoadingOlderMessages"
           @click="loadMoreAbove"
         >
-          {{ isLoadingMore || isLoadingPersistedAbove ? 'Loading…' : 'Load earlier messages' }}
+          {{ isLoadingMore || isLoadingOlderMessages ? 'Loading...' : 'Load earlier messages' }}
         </button>
       </li>
       <template v-for="message in visibleMessages" :key="message.id">

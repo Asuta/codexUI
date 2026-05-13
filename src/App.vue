@@ -1361,7 +1361,6 @@ const {
   isLoadingThreads,
   isThreadListFullyLoaded,
   isLoadingMessages,
-  isLoadingOlderMessages,
   isSendingMessage,
   isInterruptingTurn,
   isSelectedThreadInterruptPending,

@@ -415,6 +415,8 @@ export type ThreadTurnPage = {
   turnIndexByTurnId: ThreadTurnIndexById
   activeTurnId: string
   inProgress: boolean
+  hasMoreOlder: boolean
+  startTurnIndex: number
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -741,15 +743,6 @@ export type ThreadGroupsPage = {
   nextCursor: string | null
 }
 
-export type ThreadTurnPage = {
-  messages: UiMessage[]
-  inProgress: boolean
-  activeTurnId: string
-  hasMoreOlder: boolean
-  startTurnIndex: number
-  turnIndexByTurnId: ThreadTurnIndexById
-}
-
 async function getThreadGroupsPageV2(cursor: string | null, limit: number): Promise<ThreadGroupsPage> {
   const payload = await callRpc<ThreadListResponse>('thread/list', {
     archived: false,
@@ -826,6 +819,7 @@ async function getOlderThreadMessagesV2(threadId: string, beforeTurnId: string, 
 
   return {
     messages: normalizeThreadMessagesV2(payload.result, startTurnIndex),
+    nextCursor: null,
     inProgress: readThreadInProgressFromResponse(payload.result),
     activeTurnId: readActiveTurnIdFromResponse(payload.result),
     hasMoreOlder: payload.hasMoreOlder === true,
